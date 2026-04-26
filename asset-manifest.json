@@ -1,0 +1,10 @@
+{
+  "files": {
+    "main.js": "/edumn/static/js/main.dbe84106.js",
+    "index.html": "/edumn/index.html",
+    "main.dbe84106.js.map": "/edumn/static/js/main.dbe84106.js.map"
+  },
+  "entrypoints": [
+    "static/js/main.dbe84106.js"
+  ]
+}
