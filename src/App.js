@@ -1,482 +1,1069 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { db, auth } from "./firebase";
+import {
+  collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc,
+  onSnapshot, query, orderBy, serverTimestamp, where
+} from "firebase/firestore";
+import {
+  createUserWithEmailAndPassword, signInWithEmailAndPassword,
+  signOut, onAuthStateChanged, updateProfile
+} from "firebase/auth";
 
-const CATS = [
-  { id:'computer', name:'Компьютер', icon:'💻', color:'#0ea5e9' },
-  { id:'language', name:'Гадаад хэл', icon:'🌍', color:'#f59e0b' },
-  { id:'education', name:'Ерөнхий боловсрол', icon:'🎓', color:'#10b981' },
+// ==================== STYLES ====================
+const styles = `
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', sans-serif; background: #f5f7fa; color: #333; }
+  .nav { background: linear-gradient(135deg, #1a1a2e, #16213e); padding: 0 24px; display: flex; align-items: center; justify-content: space-between; height: 64px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
+  .logo { color: #fff; font-size: 22px; font-weight: 800; cursor: pointer; }
+  .logo span { color: #f59e0b; }
+  .nav-links { display: flex; gap: 8px; align-items: center; }
+  .btn { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s; }
+  .btn-primary { background: #f59e0b; color: #1a1a2e; }
+  .btn-primary:hover { background: #d97706; transform: translateY(-1px); }
+  .btn-outline { background: transparent; color: #fff; border: 2px solid rgba(255,255,255,0.3); }
+  .btn-outline:hover { border-color: #f59e0b; color: #f59e0b; }
+  .btn-danger { background: #ef4444; color: #fff; }
+  .btn-danger:hover { background: #dc2626; }
+  .btn-success { background: #10b981; color: #fff; }
+  .btn-success:hover { background: #059669; }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+  .hero { background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460); color: #fff; padding: 80px 24px; text-align: center; }
+  .hero h1 { font-size: 48px; font-weight: 800; margin-bottom: 16px; }
+  .hero h1 span { color: #f59e0b; }
+  .hero p { font-size: 18px; opacity: 0.85; margin-bottom: 32px; }
+  .hero-btns { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+  .section { padding: 60px 24px; max-width: 1200px; margin: 0 auto; }
+  .section-title { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+  .section-sub { color: #6b7280; margin-bottom: 32px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px; }
+  .card { background: #fff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.08); transition: transform 0.2s, box-shadow 0.2s; cursor: pointer; }
+  .card:hover { transform: translateY(-4px); box-shadow: 0 8px 30px rgba(0,0,0,0.15); }
+  .card-img { height: 160px; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; font-size: 48px; }
+  .card-body { padding: 16px; }
+  .card-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; line-height: 1.3; }
+  .card-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; background: #f59e0b; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #1a1a2e; overflow: hidden; }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .badge { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .badge-free { background: #d1fae5; color: #065f46; }
+  .badge-paid { background: #fef3c7; color: #92400e; }
+  .badge-cat { background: #e0e7ff; color: #3730a3; }
+  .badge-pending { background: #fef9c3; color: #854d0e; }
+  .badge-approved { background: #dcfce7; color: #166534; }
+  .price { font-size: 18px; font-weight: 800; color: #f59e0b; }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .modal { background: #fff; border-radius: 20px; padding: 32px; width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; }
+  .modal h2 { font-size: 24px; font-weight: 700; margin-bottom: 24px; }
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; color: #374151; }
+  .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 10px 14px; border: 2px solid #e5e7eb; border-radius: 10px; font-size: 14px; transition: border-color 0.2s; font-family: inherit; }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: #f59e0b; }
+  .form-group textarea { min-height: 100px; resize: vertical; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .alert { padding: 12px 16px; border-radius: 10px; margin-bottom: 16px; font-size: 14px; font-weight: 500; }
+  .alert-error { background: #fee2e2; color: #991b1b; }
+  .alert-success { background: #d1fae5; color: #065f46; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 32px; flex-wrap: wrap; }
+  .tab { padding: 8px 20px; border-radius: 20px; border: 2px solid #e5e7eb; background: #fff; cursor: pointer; font-weight: 600; font-size: 14px; transition: all 0.2s; }
+  .tab.active { background: #1a1a2e; color: #f59e0b; border-color: #1a1a2e; }
+  .admin-panel { background: #fff; border-radius: 16px; padding: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+  .admin-panel h3 { font-size: 18px; font-weight: 700; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid #f3f4f6; }
+  .table { width: 100%; border-collapse: collapse; }
+  .table th, .table td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #f3f4f6; font-size: 14px; }
+  .table th { background: #f9fafb; font-weight: 700; color: #374151; }
+  .table tr:hover td { background: #fafafa; }
+  .course-detail { max-width: 900px; margin: 0 auto; padding: 32px 24px; }
+  .video-container { background: #000; border-radius: 16px; overflow: hidden; margin-bottom: 24px; aspect-ratio: 16/9; position: relative; }
+  .video-container iframe { width: 100%; height: 100%; border: none; }
+  .video-lock { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #fff; gap: 16px; }
+  .video-lock .lock-icon { font-size: 48px; }
+  .teacher-card { display: flex; align-items: center; gap: 16px; background: #f9fafb; padding: 20px; border-radius: 12px; margin-bottom: 24px; }
+  .teacher-avatar { width: 64px; height: 64px; border-radius: 50%; background: #f59e0b; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 700; color: #1a1a2e; overflow: hidden; }
+  .teacher-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .news-card { background: #fff; border-radius: 16px; padding: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); margin-bottom: 16px; }
+  .news-card h3 { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+  .news-card p { color: #6b7280; line-height: 1.6; }
+  .news-date { font-size: 12px; color: #9ca3af; margin-top: 12px; }
+  .profile-section { background: #fff; border-radius: 16px; padding: 32px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); max-width: 600px; margin: 0 auto; }
+  .profile-avatar-wrap { text-align: center; margin-bottom: 24px; }
+  .profile-avatar-img { width: 100px; height: 100px; border-radius: 50%; background: #f59e0b; display: flex; align-items: center; justify-content: center; font-size: 36px; font-weight: 700; color: #1a1a2e; margin: 0 auto 12px; overflow: hidden; }
+  .profile-avatar-img img { width: 100%; height: 100%; object-fit: cover; }
+  .cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 32px; }
+  .cat-card { background: #fff; border-radius: 12px; padding: 20px; text-align: center; cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,0.06); transition: all 0.2s; border: 2px solid transparent; }
+  .cat-card:hover, .cat-card.active { border-color: #f59e0b; transform: translateY(-2px); }
+  .cat-icon { font-size: 36px; margin-bottom: 8px; }
+  .cat-name { font-weight: 700; font-size: 15px; }
+  .footer { background: #1a1a2e; color: rgba(255,255,255,0.7); padding: 40px 24px; text-align: center; }
+  .footer a { color: #f59e0b; text-decoration: none; }
+  .spinner { border: 3px solid #f3f4f6; border-top: 3px solid #f59e0b; border-radius: 50%; width: 24px; height: 24px; animation: spin 0.8s linear infinite; margin: 0 auto; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-wrap { display: flex; align-items: center; justify-content: center; padding: 60px; }
+  .user-menu { position: relative; }
+  .user-dropdown { position: absolute; right: 0; top: 48px; background: #fff; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.15); min-width: 200px; overflow: hidden; z-index: 300; }
+  .user-dropdown a, .user-dropdown button { display: block; width: 100%; padding: 12px 16px; text-align: left; border: none; background: none; cursor: pointer; font-size: 14px; font-weight: 500; color: #374151; transition: background 0.2s; text-decoration: none; }
+  .user-dropdown a:hover, .user-dropdown button:hover { background: #f9fafb; }
+  .notification { position: fixed; top: 80px; right: 24px; background: #10b981; color: #fff; padding: 12px 20px; border-radius: 12px; font-weight: 600; z-index: 400; animation: slideIn 0.3s ease; }
+  @keyframes slideIn { from { transform: translateX(100px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .progress-bar { background: #e5e7eb; border-radius: 99px; height: 8px; overflow: hidden; }
+  .progress-fill { background: linear-gradient(90deg, #f59e0b, #f97316); height: 100%; border-radius: 99px; transition: width 0.3s; }
+  .empty-state { text-align: center; padding: 60px 20px; color: #9ca3af; }
+  .empty-state .empty-icon { font-size: 48px; margin-bottom: 16px; }
+  .search-bar { display: flex; gap: 12px; margin-bottom: 24px; }
+  .search-bar input { flex: 1; padding: 10px 16px; border: 2px solid #e5e7eb; border-radius: 10px; font-size: 14px; }
+  .search-bar input:focus { outline: none; border-color: #f59e0b; }
+`;
+
+const CATEGORIES = [
+  { id: "computer", name: "Компьютер", icon: "💻" },
+  { id: "language", name: "Гадаад хэл", icon: "🌍" },
+  { id: "general", name: "Ерөнхий боловсрол", icon: "📚" },
 ];
-const ADMIN = { username:'Admin', password:'99033062' };
-const defCourses = [
-  { id:'c1', title:'Excel програмын анхан шат', cat:'computer', teacherId:'admin', teacherName:'Админ', price:18000, isFree:false, students:142, rating:4.7, desc:'Excel програмын бүрэн сургалт.', lessons:[{title:'Excel-ийн бүтэц',videoUrl:''},{title:'Формула бичих',videoUrl:''},{title:'SUM, AVERAGE функц',videoUrl:''},{title:'Диаграмм үүсгэх',videoUrl:''}], color:'#1e40af', createdAt:Date.now()-86400000*30 },
-  { id:'c2', title:'Microsoft Word дунд шат', cat:'computer', teacherId:'admin', teacherName:'Админ', price:0, isFree:true, students:89, rating:4.5, desc:'Word програмын дунд шатны сургалт.', lessons:[{title:'Breaks ашиглах',videoUrl:''},{title:'Headers & Footers',videoUrl:''},{title:'Table of Contents',videoUrl:''}], color:'#2563eb', createdAt:Date.now()-86400000*20 },
-  { id:'c3', title:'Англи хэл | Анхан шат', cat:'language', teacherId:'admin', teacherName:'Админ', price:25000, isFree:false, students:320, rating:4.8, desc:'Англи хэлний анхан шатны цогц сургалт.', lessons:[{title:'Alphabet',videoUrl:''},{title:'Grammar',videoUrl:''},{title:'Conversation',videoUrl:''}], color:'#dc2626', createdAt:Date.now()-86400000*15 },
-  { id:'c4', title:'Монгол бичиг | Анхан шат', cat:'education', teacherId:'admin', teacherName:'Админ', price:9900, isFree:false, students:450, rating:4.9, desc:'Монгол бичгийн үсэг, дүрэм.', lessons:[{title:'Үсгийн бүтэц',videoUrl:''},{title:'Үндсэн дүрэм',videoUrl:''},{title:'Өгүүлбэр бичих',videoUrl:''}], color:'#b91c1c', createdAt:Date.now()-86400000*10 },
-  { id:'c5', title:'Физик | 12-р анги ЭЕШ', cat:'education', teacherId:'admin', teacherName:'Админ', price:0, isFree:true, students:567, rating:4.6, desc:'ЭЕШ бэлтгэл.', lessons:[{title:'Кинематик',videoUrl:''},{title:'Динамик',videoUrl:''},{title:'Энерги',videoUrl:''}], color:'#7c3aed', createdAt:Date.now()-86400000*5 },
-  { id:'c6', title:'Python програмчлал', cat:'computer', teacherId:'admin', teacherName:'Админ', price:35000, isFree:false, students:210, rating:4.7, desc:'Python хэлний үндэс.', lessons:[{title:'Variables',videoUrl:''},{title:'Functions',videoUrl:''},{title:'OOP',videoUrl:''}], color:'#059669', createdAt:Date.now()-86400000*3 },
-];
-const defNews = [
-  { id:'n1', title:'EduMN платформ нээгдлээ!', content:'Манай платформ албан ёсоор нээгдлээ.', date:Date.now()-86400000*30 },
-  { id:'n2', title:'Шинэ багш нар элслээ', content:'Энэ сард 5 шинэ багш нэгдлээ.', date:Date.now()-86400000*7 },
-];
-const fmt=p=>p===0?'ҮНЭГҮЙ':p.toLocaleString()+'₮';
-const gid=()=>Math.random().toString(36).substr(2,9);
-const ago=ts=>{const d=Math.floor((Date.now()-ts)/86400000);return d===0?'Өнөөдөр':d===1?'Өчигдөр':d<30?d+' өдрийн өмнө':Math.floor(d/30)+' сарын өмнө';};
-const ytId=url=>{if(!url)return null;const m=url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|.*&v=))([^&?\s]{11})/);return m?m[1]:null;};
-const S={primary:'#0d9488',primaryDark:'#0f766e',primaryLight:'#ccfbf1',accent:'#f59e0b',danger:'#ef4444',success:'#10b981',bg:'#f0fdf4',text:'#1e293b',muted:'#94a3b8',border:'#e2e8f0',shadow:'0 1px 3px rgba(0,0,0,0.06)',shadowLg:'0 10px 25px rgba(0,0,0,0.08)',font:"'Noto Sans',-apple-system,sans-serif"};
 
-export default function App(){
-  const [user,setUser]=useState(null);
-  const [page,setPage]=useState('home');
-  const [courses,setCourses]=useState(defCourses);
-  const [news,setNews]=useState(defNews);
-  const [teachers,setTeachers]=useState([]);
-  const [pending,setPending]=useState([]);
-  const [users,setUsers]=useState([]);
-  const [enrolls,setEnrolls]=useState([]);
-  const [sel,setSel]=useState(null);
-  const [cat,setCat]=useState('all');
-  const [q,setQ]=useState('');
-  const [payModal,setPayModal]=useState(false);
-  const [avatars,setAvatars]=useState({});
-  const [loaded,setLoaded]=useState(false);
+const ADMIN = { username: "Admin", password: "99033062" };
 
-  useEffect(()=>{(async()=>{try{
-    const ks=['edumn-c3','edumn-n','edumn-t3','edumn-p3','edumn-u2','edumn-e','edumn-av2'];
-    const ss=[setCourses,setNews,setTeachers,setPending,setUsers,setEnrolls,setAvatars];
-    const rs=await Promise.all(ks.map(k=>Promise.resolve(localStorage.getItem(k)?{value:localStorage.getItem(k)}:null)));
-    rs.forEach((r,i)=>{if(r?.value)ss[i](JSON.parse(r.value));});
-  }catch(e){}setLoaded(true);})();},[]);
+function getYouTubeId(url) {
+  if (!url) return null;
+  const match = url.match(/(?:youtu\.be\/|youtube\.com(?:\/embed\/|\/v\/|\/watch\?v=|\/watch\?.+&v=))([^"&?\/\s]{11})/);
+  return match ? match[1] : null;
+}
 
-  const sv=useCallback(async(k,d)=>{try{localStorage.setItem(k,JSON.stringify(d));}catch(e){}},[]);
-  useEffect(()=>{if(loaded)sv('edumn-c3',courses);},[courses,loaded,sv]);
-  useEffect(()=>{if(loaded)sv('edumn-n',news);},[news,loaded,sv]);
-  useEffect(()=>{if(loaded)sv('edumn-t3',teachers);},[teachers,loaded,sv]);
-  useEffect(()=>{if(loaded)sv('edumn-p3',pending);},[pending,loaded,sv]);
-  useEffect(()=>{if(loaded)sv('edumn-u2',users);},[users,loaded,sv]);
-  useEffect(()=>{if(loaded)sv('edumn-e',enrolls);},[enrolls,loaded,sv]);
-  useEffect(()=>{if(loaded)sv('edumn-av2',avatars);},[avatars,loaded,sv]);
+export default function App() {
+  const [page, setPage] = useState("home");
+  const [user, setUser] = useState(null); // firebase auth user
+  const [userRole, setUserRole] = useState(null); // "admin" | "teacher" | "user"
+  const [userProfile, setUserProfile] = useState(null);
+  const [showLogin, setShowLogin] = useState(false);
+  const [showSignup, setShowSignup] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [courses, setCourses] = useState([]);
+  const [news, setNews] = useState([]);
+  const [teachers, setTeachers] = useState([]);
+  const [pendingTeachers, setPendingTeachers] = useState([]);
+  const [selectedCourse, setSelectedCourse] = useState(null);
+  const [selectedCat, setSelectedCat] = useState(null);
+  const [notification, setNotification] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [searchQ, setSearchQ] = useState("");
+  const [adminTab, setAdminTab] = useState("teachers");
+  const dropRef = useRef();
 
-  const login=(un,pw)=>{
-    if(un===ADMIN.username&&pw===ADMIN.password){setUser({id:'admin',name:'Админ',role:'admin'});setPage('admin');return true;}
-    const t=teachers.find(x=>x.username===un&&x.password===pw);
-    if(t){setUser({...t,role:'teacher'});setPage('teacher');return true;}
-    const u=users.find(x=>x.username===un&&x.password===pw);
-    if(u){setUser({...u,role:'user'});setPage('home');return true;}
+  const notify = (msg, color = "#10b981") => {
+    setNotification({ msg, color });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  // Auth state listener
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        const profileDoc = await getDoc(doc(db, "users", firebaseUser.uid));
+        if (profileDoc.exists()) {
+          const profile = profileDoc.data();
+          setUser(firebaseUser);
+          setUserRole(profile.role);
+          setUserProfile(profile);
+        }
+      } else {
+        setUser(null);
+        setUserRole(null);
+        setUserProfile(null);
+      }
+      setLoading(false);
+    });
+    return unsub;
+  }, []);
+
+  // Realtime courses
+  useEffect(() => {
+    const q = query(collection(db, "courses"), orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(q, (snap) => {
+      setCourses(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return unsub;
+  }, []);
+
+  // Realtime news
+  useEffect(() => {
+    const q = query(collection(db, "news"), orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(q, (snap) => {
+      setNews(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return unsub;
+  }, []);
+
+  // Realtime approved teachers
+  useEffect(() => {
+    const q = query(collection(db, "users"), where("role", "==", "teacher"));
+    const unsub = onSnapshot(q, (snap) => {
+      setTeachers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return unsub;
+  }, []);
+
+  // Realtime pending teachers (admin only)
+  useEffect(() => {
+    if (userRole !== "admin") return;
+    const q = query(collection(db, "pendingTeachers"));
+    const unsub = onSnapshot(q, (snap) => {
+      setPendingTeachers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return unsub;
+  }, [userRole]);
+
+  // Close dropdown outside click
+  useEffect(() => {
+    const handler = (e) => { if (dropRef.current && !dropRef.current.contains(e.target)) setShowDropdown(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // Admin login (hardcoded, not Firebase)
+  const handleAdminLogin = async (username, password) => {
+    if (username === ADMIN.username && password === ADMIN.password) {
+      // Sign in with Firebase anonymous + set admin
+      await signOut(auth).catch(() => {});
+      setUser({ uid: "admin", displayName: "Admin" });
+      setUserRole("admin");
+      setUserProfile({ name: "Admin", role: "admin" });
+      setShowLogin(false);
+      notify("Админ нэвтэрлээ!");
+      setPage("admin");
+      return true;
+    }
     return false;
   };
-  const register=(d)=>{
-    if([...users,...teachers,...pending].find(x=>x.username===d.username)||d.username===ADMIN.username)return'Энэ нэр бүртгэлтэй байна';
-    if([...users,...teachers,...pending].find(x=>x.email===d.email))return'Энэ имэйл бүртгэлтэй байна';
-    const nu={id:gid(),...d,createdAt:Date.now()};
-    if(d.role==='teacher'){setPending(p=>[...p,{...nu,status:'pending'}]);return'ok-teacher';}
-    setUsers(u=>[...u,nu]);setUser({...nu,role:'user'});setPage('home');return'ok';
+
+  const handleSignout = async () => {
+    if (userRole === "admin") {
+      setUser(null); setUserRole(null); setUserProfile(null);
+    } else {
+      await signOut(auth);
+    }
+    setShowDropdown(false);
+    setPage("home");
+    notify("Гарлаа!");
   };
-  const approve=id=>{const t=pending.find(p=>p.id===id);if(t){setTeachers(p=>[...p,{...t,status:'approved'}]);setPending(p=>p.filter(x=>x.id!==id));}};
-  const reject=id=>setPending(p=>p.filter(x=>x.id!==id));
-  const rmTeacher=id=>{setTeachers(p=>p.filter(t=>t.id!==id));setCourses(p=>p.filter(c=>c.teacherId!==id));};
-  const addCourse=d=>setCourses(p=>[{id:gid(),...d,students:0,rating:0,createdAt:Date.now()},...p]);
-  const updCourse=(id,d)=>setCourses(p=>p.map(c=>c.id===id?{...c,...d}:c));
-  const delCourse=id=>setCourses(p=>p.filter(c=>c.id!==id));
-  const enroll=cid=>{if(!user){setPage('login');return;}if(!enrolls.find(e=>e.cid===cid&&e.uid===user.id)){setEnrolls(p=>[...p,{cid,uid:user.id}]);setCourses(p=>p.map(c=>c.id===cid?{...c,students:(c.students||0)+1}:c));}};
-  const addNews=d=>setNews(p=>[{id:gid(),...d,date:Date.now()},...p]);
-  const delNews=id=>setNews(p=>p.filter(n=>n.id!==id));
-  const setAvatar=(uid,src)=>setAvatars(p=>({...p,[uid]:src}));
-  const getAv=uid=>avatars[uid]||null;
 
-  const logout=()=>{setUser(null);setPage('home');};
-  const goHome=()=>{setPage('home');setSel(null);setQ('');setCat('all');};
-  const openC=c=>{setSel(c);setPage('detail');};
-  const filt=cat==='all'?courses:courses.filter(c=>c.cat===cat);
-  const sres=q?courses.filter(c=>c.title.toLowerCase().includes(q.toLowerCase())):[];
-  const isEnr=cid=>enrolls.some(e=>e.cid===cid&&e.uid===user?.id);
+  const filteredCourses = courses.filter(c => {
+    const q = searchQ.toLowerCase();
+    const matchQ = !q || c.title?.toLowerCase().includes(q) || c.description?.toLowerCase().includes(q);
+    const matchCat = !selectedCat || c.category === selectedCat;
+    return matchQ && matchCat;
+  });
 
-  if(!loaded)return<div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',fontFamily:S.font,color:S.primary}}><div style={{textAlign:'center'}}><div style={{fontSize:48,marginBottom:12}}>🎓</div>Ачааллаж байна...</div></div>;
-
-  return(<div style={{minHeight:'100vh',background:S.bg,fontFamily:S.font,color:S.text}}>
-    <style>{`@import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700;800&display=swap');*{box-sizing:border-box;margin:0;padding:0}input,select,textarea{font-family:${S.font};font-size:14px}button{font-family:${S.font};cursor:pointer}::placeholder{color:${S.muted}}@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}.ch:hover{transform:translateY(-4px);box-shadow:${S.shadowLg}}.bh:hover{filter:brightness(0.92)}`}</style>
-
-    {/* HEADER */}
-    <header style={{background:`linear-gradient(135deg,${S.primary},${S.primaryDark})`,position:'sticky',top:0,zIndex:1000,boxShadow:'0 4px 20px rgba(13,148,136,0.3)'}}>
-      <div style={{maxWidth:1140,margin:'0 auto',padding:'0 24px',height:60,display:'flex',alignItems:'center',gap:16}}>
-        <div onClick={goHome} style={{display:'flex',alignItems:'center',gap:10,color:'#fff',cursor:'pointer',flexShrink:0}}>
-          <div style={{width:38,height:38,background:'rgba(255,255,255,0.2)',borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>🎓</div>
-          <div style={{lineHeight:1.15}}><div style={{fontSize:20,fontWeight:800}}>EduMN</div><div style={{fontSize:10,opacity:0.8}}>Мэдлэг бол хөрөнгө</div></div>
-        </div>
-        <div style={{flex:1,maxWidth:400,position:'relative'}}>
-          <input value={q} onChange={e=>{setQ(e.target.value);if(e.target.value)setPage('search');else if(page==='search')setPage('home');}} placeholder="Сургалт хайх..." style={{width:'100%',padding:'9px 38px 9px 14px',border:'2px solid rgba(255,255,255,0.25)',borderRadius:10,fontSize:13,background:'rgba(255,255,255,0.95)',outline:'none'}}/>
-          <span style={{position:'absolute',right:12,top:'50%',transform:'translateY(-50%)',fontSize:14,opacity:0.5}}>🔍</span>
-        </div>
-        <div style={{display:'flex',alignItems:'center',gap:8,marginLeft:'auto',flexShrink:0,flexWrap:'wrap'}}>
-          {user?<>
-            {user.role==='admin'&&<HBtn onClick={()=>setPage('admin')}>⚙️ Админ</HBtn>}
-            {user.role==='teacher'&&<HBtn onClick={()=>setPage('teacher')}>📋 Хичээлүүд</HBtn>}
-            <HBtn onClick={()=>setPage('my')}>📚 Миний</HBtn>
-            <div style={{display:'flex',alignItems:'center',gap:6,color:'#fff',fontSize:13}}>
-              <Av uid={user.id} name={user.name} src={getAv(user.id)} sz={28}/>
-              <span style={{fontWeight:600,maxWidth:80,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user.name}</span>
-              <span style={{fontSize:9,background:'rgba(255,255,255,0.2)',padding:'2px 7px',borderRadius:20}}>{user.role==='admin'?'Админ':user.role==='teacher'?'Багш':'Суралцагч'}</span>
-            </div>
-            <HBtn onClick={logout}>Гарах</HBtn>
-          </>:<>
-            <button onClick={()=>setPage('login')} className="bh" style={{padding:'7px 14px',borderRadius:8,fontSize:12,fontWeight:600,border:'none',background:'#fff',color:S.primary}}>Нэвтрэх</button>
-            <HBtn onClick={()=>setPage('register')}>Бүртгүүлэх</HBtn>
-          </>}
-        </div>
-      </div>
-    </header>
-
-    {/* NAV */}
-    {!['login','register','admin','teacher'].includes(page)&&<nav style={{background:'#fff',borderBottom:`1px solid ${S.border}`,boxShadow:S.shadow}}>
-      <div style={{maxWidth:1140,margin:'0 auto',padding:'0 24px',display:'flex',gap:2,overflowX:'auto'}}>
-        {[{id:'home',name:'Нүүр',icon:'🏠'},...CATS.map(c=>({id:c.id,name:c.name,icon:c.icon}))].map(it=>{
-          const a=(it.id==='home'&&page==='home'&&cat==='all')||(page==='cat'&&cat===it.id);
-          return<button key={it.id} onClick={()=>{if(it.id==='home')goHome();else{setCat(it.id);setPage('cat');setSel(null);}}} style={{display:'flex',alignItems:'center',gap:6,padding:'13px 16px',fontSize:13,fontWeight:a?700:500,color:a?S.primary:S.muted,borderBottom:a?`3px solid ${S.primary}`:'3px solid transparent',background:'none',border:'none',whiteSpace:'nowrap',cursor:'pointer',transition:'all 0.2s'}}>{it.icon} {it.name}</button>;
-        })}
-      </div>
-    </nav>}
-
-    <main style={{maxWidth:1140,margin:'0 auto',padding:'0 24px',minHeight:'60vh'}}>
-      {page==='login'&&<LoginP onLogin={login} goR={()=>setPage('register')} goH={goHome}/>}
-      {page==='register'&&<RegisterP onReg={register} goL={()=>setPage('login')} goH={goHome}/>}
-      {page==='admin'&&user?.role==='admin'&&<AdminP teachers={teachers} pending={pending} courses={courses} news={news} onApprove={approve} onReject={reject} onRm={rmTeacher} onDelC={delCourse} onAddN={addNews} onDelN={delNews} getAv={getAv}/>}
-      {page==='teacher'&&user?.role==='teacher'&&<TeacherP user={user} setUser={setUser} courses={courses.filter(c=>c.teacherId===user.id)} onAdd={d=>addCourse({...d,teacherId:user.id,teacherName:user.name})} onDel={delCourse} onUpd={updCourse} av={getAv(user.id)} onAv={d=>setAvatar(user.id,d)}/>}
-
-      {page==='home'&&<div style={{animation:'fadeUp 0.4s'}}>
-        <div style={{background:`linear-gradient(135deg,#134e4a,${S.primaryDark},${S.primary})`,borderRadius:16,padding:'40px 36px',margin:'24px 0',color:'#fff',position:'relative',overflow:'hidden'}}>
-          <div style={{position:'absolute',right:-40,top:-40,width:200,height:200,background:'rgba(255,255,255,0.05)',borderRadius:'50%'}}/>
-          <h1 style={{fontSize:28,fontWeight:800,marginBottom:12}}>Мэдлэг бол хөрөнгө 📖</h1>
-          <p style={{fontSize:15,opacity:0.85,marginBottom:24,lineHeight:1.7,maxWidth:520}}>Мэргэжлийн багш нараас видео хичээлүүдийг үзэж суралцаарай.</p>
-          <button onClick={()=>{setCat('all');setPage('cat');}} className="bh" style={{background:'#fff',color:S.primaryDark,padding:'11px 26px',borderRadius:10,fontSize:14,fontWeight:700,border:'none'}}>Бүх сургалт →</button>
-        </div>
-        {news.length>0&&<div style={{marginBottom:28}}><h2 style={{fontSize:18,fontWeight:700,marginBottom:14}}>📢 Мэдээ</h2><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:14}}>{news.slice(0,3).map(n=><div key={n.id} style={{background:'#fff',borderRadius:12,padding:'18px 20px',boxShadow:S.shadow,borderLeft:`4px solid ${S.primary}`}}><h3 style={{fontSize:14,fontWeight:700,marginBottom:4}}>{n.title}</h3><p style={{fontSize:12,color:S.muted,lineHeight:1.6}}>{n.content.substring(0,80)}</p><span style={{fontSize:11,color:S.muted}}>{ago(n.date)}</span></div>)}</div></div>}
-        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14,marginBottom:28}}>
-          {CATS.map(c=><button key={c.id} onClick={()=>{setCat(c.id);setPage('cat');}} className="ch" style={{background:'#fff',borderRadius:14,padding:'22px 18px',boxShadow:S.shadow,border:'none',textAlign:'left',cursor:'pointer',transition:'all 0.3s',display:'flex',alignItems:'center',gap:14}}>
-            <div style={{width:48,height:48,borderRadius:12,background:`${c.color}15`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:22}}>{c.icon}</div>
-            <div><div style={{fontSize:15,fontWeight:700}}>{c.name}</div><div style={{fontSize:12,color:S.muted}}>{courses.filter(x=>x.cat===c.id).length} сургалт</div></div>
-          </button>)}
-        </div>
-        <Grid t="Шинэ сургалтууд" l={courses.slice(0,4)} onO={openC} gA={getAv} onM={()=>{setCat('all');setPage('cat');}}/>
-        <Grid t="Их суралцсан" l={[...courses].sort((a,b)=>(b.students||0)-(a.students||0)).slice(0,4)} onO={openC} gA={getAv}/>
-        <Grid t="Үнэгүй" l={courses.filter(c=>c.isFree).slice(0,4)} onO={openC} gA={getAv}/>
-      </div>}
-
-      {page==='cat'&&<div style={{animation:'fadeUp 0.3s',paddingTop:24}}>
-        <h2 style={{fontSize:20,fontWeight:700,marginBottom:16}}>{CATS.find(c=>c.id===cat)?.name||'Бүх'} сургалтууд</h2>
-        <div style={{display:'flex',gap:8,marginBottom:20,flexWrap:'wrap'}}>
-          {['all',...CATS.map(c=>c.id)].map(id=><button key={id} onClick={()=>setCat(id)} className="bh" style={{padding:'8px 18px',borderRadius:30,fontSize:12,fontWeight:600,border:'none',background:cat===id?S.primary:'#fff',color:cat===id?'#fff':S.muted,boxShadow:S.shadow}}>{id==='all'?'Бүгд':CATS.find(c=>c.id===id)?.name}</button>)}
-        </div>
-        {filt.length>0?<div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:16,marginBottom:36}}>{filt.map(c=><CC key={c.id} c={c} onClick={openC} av={getAv(c.teacherId)}/>)}</div>:<MT i="📭" t="Олдсонгүй"/>}
-      </div>}
-
-      {page==='search'&&<div style={{paddingTop:24}}><h2 style={{fontSize:18,fontWeight:600,marginBottom:16}}>"{q}" — <span style={{color:S.muted,fontWeight:400}}>{sres.length} үр дүн</span></h2>
-        {sres.length>0?<div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:16,marginBottom:36}}>{sres.map(c=><CC key={c.id} c={c} onClick={openC} av={getAv(c.teacherId)}/>)}</div>:<MT i="🔍" t="Олдсонгүй"/>}
-      </div>}
-
-      {page==='detail'&&sel&&<Detail c={sel} enr={isEnr(sel.id)} user={user} av={getAv(sel.teacherId)}
-        onEnroll={()=>{if(!user){setPage('login');return;}if(sel.isFree||sel.price===0)enroll(sel.id);else setPayModal(true);}}
-        onBuy={()=>{enroll(sel.id);setPayModal(false);}} showPay={payModal} setPay={setPayModal}/>}
-
-      {page==='my'&&user&&<div style={{paddingTop:24,animation:'fadeUp 0.3s'}}>
-        <h2 style={{fontSize:20,fontWeight:700,marginBottom:16}}>📚 Миний сургалтууд</h2>
-        {enrolls.filter(e=>e.uid===user.id).length>0?enrolls.filter(e=>e.uid===user.id).map(e=>{
-          const c=courses.find(x=>x.id===e.cid);if(!c)return null;
-          return<div key={e.cid} onClick={()=>openC(c)} className="ch" style={{display:'flex',background:'#fff',borderRadius:12,overflow:'hidden',boxShadow:S.shadow,marginBottom:14,cursor:'pointer',transition:'all 0.3s'}}>
-            <div style={{width:180,minHeight:100,background:`linear-gradient(135deg,${c.color},${c.color}cc)`,display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:700,fontSize:12,textAlign:'center',padding:12}}>{c.title}</div>
-            <div style={{padding:'14px 18px',flex:1}}><h3 style={{fontSize:15,fontWeight:700,marginBottom:4}}>{c.title}</h3><div style={{fontSize:12,color:S.muted}}>👤 {c.teacherName}</div></div>
-          </div>;
-        }):<MT i="📚" t="Бүртгүүлсэн сургалт байхгүй"/>}
-      </div>}
-    </main>
-
-    <footer style={{background:'#134e4a',color:'rgba(255,255,255,0.7)',padding:'36px 0 16px',marginTop:50}}>
-      <div style={{maxWidth:1140,margin:'0 auto',padding:'0 24px',display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr',gap:32,marginBottom:24}}>
-        <div><h3 style={{color:'#fff',fontSize:18,fontWeight:800,marginBottom:10}}>🎓 EduMN</h3><p style={{fontSize:12,lineHeight:1.8}}>Монголын чанартай онлайн сургалтын платформ.</p></div>
-        <div><h4 style={{color:'#fff',fontSize:13,fontWeight:600,marginBottom:10}}>Ангилал</h4><div style={{fontSize:12,lineHeight:2.4}}>{CATS.map(c=><div key={c.id}>{c.icon} {c.name}</div>)}</div></div>
-        <div><h4 style={{color:'#fff',fontSize:13,fontWeight:600,marginBottom:10}}>Мэдээлэл</h4><div style={{fontSize:12,lineHeight:2.4}}>Бидний тухай<br/>Үйлчилгээний нөхцөл</div></div>
-        <div><h4 style={{color:'#fff',fontSize:13,fontWeight:600,marginBottom:10}}>Холбоо барих</h4><div style={{fontSize:12,lineHeight:2.4}}>📞 9903-3062<br/>📧 contact@edumn.mn<br/>📍 Улаанбаатар</div></div>
-      </div>
-      <div style={{maxWidth:1140,margin:'0 auto',padding:'14px 24px 0',borderTop:'1px solid rgba(255,255,255,0.1)',textAlign:'center',fontSize:11}}>© 2024 EduMN</div>
-    </footer>
-  </div>);
-}
-
-// === HELPERS ===
-function HBtn({children,onClick}){return<button onClick={onClick} className="bh" style={{padding:'7px 14px',borderRadius:8,fontSize:12,fontWeight:600,border:'1px solid rgba(255,255,255,0.3)',background:'rgba(255,255,255,0.15)',color:'#fff'}}>{children}</button>;}
-function MT({i,t,s}){return<div style={{textAlign:'center',padding:'48px 20px',color:S.muted}}><div style={{fontSize:44,marginBottom:10}}>{i}</div><h3 style={{fontSize:16,fontWeight:600,color:S.text,marginBottom:4}}>{t}</h3>{s&&<p style={{fontSize:13}}>{s}</p>}</div>;}
-function Av({uid,name,src,sz=28}){return src?<img src={src} alt="" style={{width:sz,height:sz,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>:<div style={{width:sz,height:sz,borderRadius:'50%',background:S.accent,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:sz*0.4,color:'#fff',flexShrink:0}}>{name?.[0]||'?'}</div>;}
-
-function ImgPick({src,onPick,sz=80}){
-  const ref=useRef();
-  const go=e=>{const f=e.target.files[0];if(!f)return;if(f.size>500000){alert('500KB-аас бага зураг оруулна уу');return;}const r=new FileReader();r.onload=ev=>onPick(ev.target.result);r.readAsDataURL(f);};
-  return<div style={{textAlign:'center'}}><div onClick={()=>ref.current.click()} style={{width:sz,height:sz,borderRadius:'50%',margin:'0 auto',cursor:'pointer',overflow:'hidden',border:`3px dashed ${S.border}`,display:'flex',alignItems:'center',justifyContent:'center',background:'#f8fafc',position:'relative'}}>
-    {src?<img src={src} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<div style={{textAlign:'center',color:S.muted,fontSize:11}}><div style={{fontSize:24}}>📷</div>Зураг</div>}
-    <div style={{position:'absolute',bottom:0,left:0,right:0,background:'rgba(0,0,0,0.5)',color:'#fff',fontSize:10,padding:'3px 0',textAlign:'center'}}>Солих</div>
-  </div><input ref={ref} type="file" accept="image/*" onChange={go} style={{display:'none'}}/></div>;
-}
-
-function CC({c,onClick,av}){return<div onClick={()=>onClick(c)} className="ch" style={{background:'#fff',borderRadius:12,overflow:'hidden',boxShadow:S.shadow,cursor:'pointer',transition:'all 0.3s',display:'flex',flexDirection:'column'}}>
-  <div style={{height:120,background:`linear-gradient(135deg,${c.color||S.primary},${c.color||S.primary}bb)`,display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:700,fontSize:13,padding:16,textAlign:'center',lineHeight:1.4,position:'relative'}}>
-    {c.title}{c.isFree&&<span style={{position:'absolute',top:8,right:8,background:S.success,color:'#fff',padding:'2px 10px',borderRadius:20,fontSize:10,fontWeight:700}}>ҮНЭГҮЙ</span>}
-  </div>
-  <div style={{padding:'12px 14px',flex:1,display:'flex',flexDirection:'column'}}>
-    <div style={{fontSize:11,color:S.muted,marginBottom:6,display:'flex',alignItems:'center',gap:6}}><Av uid={c.teacherId} name={c.teacherName} src={av} sz={20}/>{c.teacherName}</div>
-    <div style={{fontSize:13,fontWeight:600,lineHeight:1.4,marginBottom:8,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{c.title}</div>
-    <div style={{marginTop:'auto',display:'flex',justifyContent:'space-between',alignItems:'center',paddingTop:8,borderTop:`1px solid ${S.border}`}}>
-      <span style={{fontSize:11,color:S.muted}}>👤 {(c.students||0).toLocaleString()}</span>
-      <span style={{fontSize:14,fontWeight:700,color:c.isFree?S.success:S.text}}>{c.isFree?'ҮНЭГҮЙ':fmt(c.price)}</span>
+  if (loading) return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div className="spinner" style={{ width: 48, height: 48 }} />
     </div>
-  </div>
-</div>;}
+  );
 
-function Grid({t,l,onO,gA,onM}){if(!l.length)return null;return<div style={{marginBottom:30}}>
-  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}><h2 style={{fontSize:18,fontWeight:700}}>{t}</h2>{onM&&<button onClick={onM} style={{color:S.primary,fontSize:13,fontWeight:500,background:'none',border:'none',cursor:'pointer'}}>Бүгдийг үзэх →</button>}</div>
-  <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:16}}>{l.map(c=><CC key={c.id} c={c} onClick={onO} av={gA(c.teacherId)}/>)}</div>
-</div>;}
+  return (
+    <>
+      <style>{styles}</style>
+      {notification && <div className="notification" style={{ background: notification.color }}>{notification.msg}</div>}
 
-// === DETAIL ===
-function Detail({c,enr,user,av,onEnroll,onBuy,showPay,setPay}){
-  const [tab,setTab]=useState('intro');
-  const [playing,setPlaying]=useState(null);
-  const stars=r=>Array.from({length:5},(_,i)=><span key={i} style={{color:i<Math.round(r||0)?'#f59e0b':'#ddd'}}>★</span>);
+      <Nav
+        page={page} setPage={setPage} user={user} userRole={userRole}
+        userProfile={userProfile} showDropdown={showDropdown}
+        setShowDropdown={setShowDropdown} dropRef={dropRef}
+        setShowLogin={setShowLogin} setShowSignup={setShowSignup}
+        handleSignout={handleSignout} pendingTeachers={pendingTeachers}
+      />
 
-  return<div style={{paddingTop:24,animation:'fadeUp 0.3s'}}>
-    <div style={{display:'grid',gridTemplateColumns:'1fr 300px',gap:24,alignItems:'start'}}>
-      <div style={{background:'#fff',borderRadius:14,overflow:'hidden',boxShadow:S.shadow}}>
-        {/* VIDEO or BANNER */}
-        {playing!==null&&c.lessons?.[playing]?<div style={{padding:16,background:'#0f172a'}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-            <h3 style={{color:'#fff',fontSize:14,fontWeight:600}}>▶ {c.lessons[playing].title}</h3>
-            <button onClick={()=>setPlaying(null)} style={{background:'rgba(255,255,255,0.1)',color:'#fff',border:'none',borderRadius:6,padding:'4px 12px',fontSize:12,cursor:'pointer'}}>✕ Хаах</button>
-          </div>
-          {(()=>{const l=c.lessons[playing];const yt=ytId(l.videoUrl);
-            if(yt)return<div style={{position:'relative',paddingBottom:'56.25%',height:0,borderRadius:8,overflow:'hidden'}}><iframe src={`https://www.youtube.com/embed/${yt}?autoplay=1`} title="v" frameBorder="0" allow="autoplay;encrypted-media" allowFullScreen style={{position:'absolute',top:0,left:0,width:'100%',height:'100%'}}/></div>;
-            if(l.videoUrl)return<video controls autoPlay style={{width:'100%',borderRadius:8}} src={l.videoUrl}/>;
-            return<div style={{background:'#1e293b',borderRadius:8,padding:40,textAlign:'center',color:S.muted}}><div style={{fontSize:48}}>🎬</div>Видео оруулаагүй</div>;
-          })()}
-        </div>
-        :<div style={{height:180,background:`linear-gradient(135deg,${c.color||S.primary},${c.color||S.primary}bb)`,display:'flex',alignItems:'center',justifyContent:'center'}}>
-          <h1 style={{color:'#fff',fontSize:22,fontWeight:800,textAlign:'center',padding:20}}>{c.title}</h1>
-        </div>}
+      {showLogin && <LoginModal
+        onClose={() => setShowLogin(false)}
+        onAdminLogin={handleAdminLogin}
+        setUser={setUser} setUserRole={setUserRole} setUserProfile={setUserProfile}
+        notify={notify} db={db} setPage={setPage}
+      />}
+      {showSignup && <SignupModal
+        onClose={() => setShowSignup(false)}
+        notify={notify} db={db} setShowLogin={setShowLogin}
+      />}
 
-        <div style={{display:'flex',borderBottom:`1px solid ${S.border}`,padding:'0 20px'}}>
-          {['intro','lessons'].map(t=><button key={t} onClick={()=>setTab(t)} style={{padding:'12px 16px',fontSize:13,fontWeight:tab===t?700:500,color:tab===t?S.primary:S.muted,borderBottom:tab===t?`3px solid ${S.primary}`:'3px solid transparent',background:'none',border:'none',cursor:'pointer'}}>{t==='intro'?'Танилцуулга':`Хичээл (${c.lessons?.length||0})`}</button>)}
-        </div>
-        <div style={{padding:22}}>
-          <div style={{display:'flex',gap:16,marginBottom:20,fontSize:13,color:S.muted,flexWrap:'wrap'}}><span>{stars(c.rating)} ({c.rating||0})</span><span>👤 {(c.students||0).toLocaleString()}</span><span>📖 {c.lessons?.length||0} хичээл</span></div>
-          {tab==='intro'&&<><p style={{fontSize:14,color:'#475569',lineHeight:1.8,marginBottom:20}}>{c.desc}</p>{c.lessons&&<><h3 style={{fontSize:16,fontWeight:700,marginBottom:12}}>📚 Юу сурах вэ?</h3><ul style={{listStyle:'none',padding:0}}>{c.lessons.map((l,i)=><li key={i} style={{display:'flex',gap:8,padding:'7px 0',fontSize:13}}><span style={{color:S.primary,fontWeight:700}}>✓</span>{l.title||l}</li>)}</ul></>}</>}
-          {tab==='lessons'&&(c.lessons?<div>{c.lessons.map((l,i)=>{
-            const has=l.videoUrl&&l.videoUrl.length>0;
-            return<div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'14px 0',borderBottom:`1px solid ${S.border}`,fontSize:14}}>
-              <button onClick={()=>{if(has&&enr)setPlaying(i);}} style={{width:36,height:36,borderRadius:'50%',background:has?(enr?S.primary:'#e2e8f0'):S.border,display:'flex',alignItems:'center',justifyContent:'center',color:has&&enr?'#fff':S.muted,fontSize:12,fontWeight:700,border:'none',cursor:has&&enr?'pointer':'default',flexShrink:0}}>▶</button>
-              <span style={{flex:1,fontWeight:500}}>{i+1}. {l.title}</span>
-              {has?<span style={{fontSize:11,color:S.success,fontWeight:600,background:`${S.success}15`,padding:'3px 10px',borderRadius:20}}>🎬 Видео</span>
-                :<span style={{fontSize:11,color:S.muted}}>Удахгүй</span>}
-              {has&&!enr&&<span style={{fontSize:11,color:S.muted}}>🔒</span>}
-            </div>;
-          })}</div>:<MT i="📹" t="Удахгүй"/>)}
-        </div>
-      </div>
-      {/* SIDEBAR */}
-      <div style={{background:'#fff',borderRadius:14,boxShadow:S.shadowLg,overflow:'hidden',position:'sticky',top:80}}>
-        <div style={{padding:22,textAlign:'center',borderBottom:`1px solid ${S.border}`}}><Av uid={c.teacherId} name={c.teacherName} src={av} sz={60}/><div style={{fontSize:11,color:S.muted,marginTop:8}}>Багш</div><div style={{fontSize:15,fontWeight:700}}>{c.teacherName}</div></div>
-        <div style={{padding:22}}>
-          <div style={{fontSize:24,fontWeight:800,color:c.isFree?S.success:S.primary,marginBottom:14}}>{c.isFree?'ҮНЭГҮЙ':fmt(c.price)}</div>
-          {enr?<button style={{background:S.success,color:'#fff',padding:'12px 0',borderRadius:10,fontSize:14,fontWeight:700,width:'100%',border:'none'}}>▶ Үргэлжлүүлэх</button>
-          :<button onClick={onEnroll} className="bh" style={{background:S.primary,color:'#fff',padding:'12px 0',borderRadius:10,fontSize:14,fontWeight:700,width:'100%',border:'none'}}>{c.isFree?'✓ Бүртгүүлэх':'🛒 Худалдаж авах'}</button>}
-        </div>
-      </div>
-    </div>
-    {showPay&&<div onClick={()=>setPay(false)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:2000}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:'#fff',borderRadius:20,width:400,maxWidth:'95vw',overflow:'hidden'}}>
-        <div style={{padding:'18px 22px',borderBottom:`1px solid ${S.border}`,display:'flex',justifyContent:'space-between'}}><h3 style={{fontSize:16,fontWeight:700}}>💳 Төлбөр</h3><button onClick={()=>setPay(false)} style={{width:28,height:28,borderRadius:'50%',background:'#f1f5f9',border:'none',fontSize:14}}>✕</button></div>
-        <div style={{padding:28,textAlign:'center'}}><div style={{width:140,height:140,margin:'0 auto 16px',background:'#f8fafc',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',border:`2px dashed ${S.border}`}}><div style={{color:S.muted}}><div style={{fontSize:32,marginBottom:6}}>📱</div>QR код</div></div>
-          <button onClick={onBuy} className="bh" style={{padding:'10px 24px',background:S.primary,color:'#fff',borderRadius:10,fontSize:13,fontWeight:600,border:'none'}}>Баталгаажуулах</button></div>
-        <div style={{background:S.primary,color:'#fff',textAlign:'center',padding:14,fontWeight:600}}>Дүн: <span style={{fontSize:18,fontWeight:800,marginLeft:6}}>{fmt(c.price)}</span></div>
-      </div>
-    </div>}
-  </div>;
+      {page === "home" && <HomePage
+        courses={courses} news={news} setPage={setPage}
+        setSelectedCourse={setSelectedCourse} setSelectedCat={setSelectedCat}
+        user={user} userRole={userRole} setShowLogin={setShowLogin}
+      />}
+      {page === "courses" && <CoursesPage
+        courses={filteredCourses} setSelectedCourse={setSelectedCourse}
+        setPage={setPage} selectedCat={selectedCat} setSelectedCat={setSelectedCat}
+        searchQ={searchQ} setSearchQ={setSearchQ}
+        user={user} userRole={userRole} setShowLogin={setShowLogin}
+      />}
+      {page === "courseDetail" && selectedCourse && <CourseDetailPage
+        course={selectedCourse} courses={courses} teachers={teachers}
+        user={user} userRole={userRole} setShowLogin={setShowLogin}
+        notify={notify} db={db} setPage={setPage}
+      />}
+      {page === "news" && <NewsPage news={news} />}
+      {page === "admin" && userRole === "admin" && <AdminPage
+        pendingTeachers={pendingTeachers} teachers={teachers}
+        courses={courses} news={news} db={db} notify={notify}
+        adminTab={adminTab} setAdminTab={setAdminTab}
+      />}
+      {page === "teacher" && userRole === "teacher" && <TeacherPage
+        user={user} userProfile={userProfile} courses={courses}
+        db={db} notify={notify} setUserProfile={setUserProfile}
+      />}
+      {page === "profile" && user && userRole === "user" && <ProfilePage
+        user={user} userProfile={userProfile} courses={courses}
+        db={db} notify={notify} setUserProfile={setUserProfile}
+      />}
+      {page === "contact" && <ContactPage />}
+
+      <footer className="footer">
+        <p><strong style={{ color: "#f59e0b" }}>EduMN</strong> — Монгол онлайн сургалтын платформ</p>
+        <p style={{ marginTop: 8 }}>📞 <a href="tel:99033062">9903-3062</a> | ✉️ <a href="mailto:contact@edumn.mn">contact@edumn.mn</a></p>
+        <p style={{ marginTop: 8, fontSize: 12 }}>© 2024 EduMN. Бүх эрх хуулиар хамгаалагдсан.</p>
+      </footer>
+    </>
+  );
 }
 
-// === LOGIN ===
-function LoginP({onLogin,goR,goH}){
-  const [u,setU]=useState('');const [p,setP]=useState('');const [e,setE]=useState('');
-  const go=ev=>{ev.preventDefault();if(!onLogin(u,p))setE('Нэвтрэх нэр эсвэл нууц үг буруу');};
-  return<div style={{maxWidth:380,margin:'60px auto',animation:'fadeUp 0.4s'}}><div style={{background:'#fff',borderRadius:16,padding:'36px 30px',boxShadow:S.shadowLg}}>
-    <div style={{textAlign:'center',marginBottom:24}}><div style={{fontSize:44,marginBottom:8}}>🎓</div><h1 style={{fontSize:22,fontWeight:800}}>EduMN нэвтрэх</h1></div>
-    <form onSubmit={go}>
-      {e&&<div style={{background:'#fef2f2',border:'1px solid #fecaca',borderRadius:8,padding:'10px 14px',marginBottom:14,fontSize:13,color:S.danger}}>{e}</div>}
-      <Lbl>Нэвтрэх нэр</Lbl><Inp v={u} set={v=>{setU(v);setE('');}} ph="Нэвтрэх нэр"/>
-      <Lbl>Нууц үг</Lbl><Inp v={p} set={v=>{setP(v);setE('');}} ph="Нууц үг" tp="password"/>
-      <button type="submit" className="bh" style={{width:'100%',padding:'12px',background:S.primary,color:'#fff',border:'none',borderRadius:10,fontSize:15,fontWeight:700,marginTop:6}}>Нэвтрэх</button>
-    </form>
-    <div style={{textAlign:'center',marginTop:16,fontSize:13}}>Бүртгэл байхгүй? <button onClick={goR} style={{color:S.primary,fontWeight:600,background:'none',border:'none',cursor:'pointer',fontSize:13}}>Бүртгүүлэх</button></div>
-    <button onClick={goH} style={{display:'block',margin:'10px auto 0',color:S.muted,background:'none',border:'none',cursor:'pointer',fontSize:12}}>← Нүүр</button>
-  </div></div>;
-}
-
-// === REGISTER ===
-function RegisterP({onReg,goL,goH}){
-  const [f,setF]=useState({name:'',username:'',email:'',password:'',password2:'',role:'user'});
-  const [e,setE]=useState('');const [ok,setOk]=useState('');
-  const go=ev=>{ev.preventDefault();
-    if(!f.name||!f.username||!f.email||!f.password){setE('Бүх талбарыг бөглөнө үү');return;}
-    if(!f.email.includes('@')){setE('Имэйл хаяг буруу байна');return;}
-    if(f.password.length<4){setE('Нууц үг 4+ тэмдэгт');return;}
-    if(f.password!==f.password2){setE('Нууц үг таарахгүй байна');return;}
-    const r=onReg(f);if(r==='ok')return;if(r==='ok-teacher'){setOk('Хүсэлт илгээгдлээ! Админ зөвшөөрсний дараа нэвтэрнэ.');return;}setE(r);
-  };
-  return<div style={{maxWidth:420,margin:'60px auto',animation:'fadeUp 0.4s'}}><div style={{background:'#fff',borderRadius:16,padding:'36px 30px',boxShadow:S.shadowLg}}>
-    <div style={{textAlign:'center',marginBottom:24}}><div style={{fontSize:44,marginBottom:8}}>📝</div><h1 style={{fontSize:22,fontWeight:800}}>Бүртгүүлэх</h1></div>
-    {ok?<div style={{textAlign:'center'}}><div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:10,padding:18,marginBottom:14,fontSize:13,color:'#166534',lineHeight:1.7}}>✅ {ok}</div><button onClick={goL} className="bh" style={{padding:'10px 22px',background:S.primary,color:'#fff',border:'none',borderRadius:10,fontSize:13,fontWeight:600}}>Нэвтрэх</button></div>
-    :<form onSubmit={go}>
-      {e&&<div style={{background:'#fef2f2',border:'1px solid #fecaca',borderRadius:8,padding:'10px 14px',marginBottom:14,fontSize:13,color:S.danger}}>{e}</div>}
-      <Lbl>Эрхийн төрөл</Lbl>
-      <div style={{display:'flex',gap:10,marginBottom:16}}>
-        {[['user','🧑 Суралцагч'],['teacher','🎓 Багш']].map(([v,l])=><button key={v} type="button" onClick={()=>setF(x=>({...x,role:v}))} style={{flex:1,padding:'10px',borderRadius:10,border:f.role===v?`2px solid ${S.primary}`:`2px solid ${S.border}`,background:f.role===v?S.primaryLight:'#fff',fontWeight:600,fontSize:13,cursor:'pointer',color:f.role===v?S.primaryDark:S.muted}}>{l}</button>)}
-      </div>
-      <Lbl>Нэр</Lbl><Inp v={f.name} set={v=>setF(x=>({...x,name:v}))} ph="Таны нэр"/>
-      <Lbl>Имэйл хаяг</Lbl><Inp v={f.email} set={v=>setF(x=>({...x,email:v}))} ph="example@mail.com" tp="email"/>
-      <Lbl>Нэвтрэх нэр</Lbl><Inp v={f.username} set={v=>{setF(x=>({...x,username:v}));setE('');}} ph="Нэвтрэх нэр"/>
-      <Lbl>Нууц үг</Lbl><Inp v={f.password} set={v=>setF(x=>({...x,password:v}))} ph="Нууц үг (4+ тэмдэгт)" tp="password"/>
-      <Lbl>Нууц үг давтах</Lbl><Inp v={f.password2} set={v=>setF(x=>({...x,password2:v}))} ph="Нууц үг дахин бичнэ үү" tp="password"/>
-      {f.password2&&f.password!==f.password2&&<div style={{fontSize:12,color:S.danger,marginTop:-8,marginBottom:8}}>⚠️ Нууц үг таарахгүй байна</div>}
-      {f.password2&&f.password===f.password2&&f.password.length>=4&&<div style={{fontSize:12,color:S.success,marginTop:-8,marginBottom:8}}>✓ Нууц үг таарч байна</div>}
-      {f.role==='teacher'&&<div style={{background:'#fffbeb',border:'1px solid #fde68a',borderRadius:10,padding:'12px 14px',marginBottom:16,fontSize:12,color:'#92400e',lineHeight:1.6}}>ℹ️ Админ зөвшөөрсний дараа нэвтрэх боломжтой.</div>}
-      <button type="submit" className="bh" style={{width:'100%',padding:'12px',background:S.primary,color:'#fff',border:'none',borderRadius:10,fontSize:15,fontWeight:700}}>{f.role==='teacher'?'Хүсэлт илгээх':'Бүртгүүлэх'}</button>
-    </form>}
-    <div style={{textAlign:'center',marginTop:16,fontSize:13}}>Бүртгэлтэй? <button onClick={goL} style={{color:S.primary,fontWeight:600,background:'none',border:'none',cursor:'pointer',fontSize:13}}>Нэвтрэх</button></div>
-    <button onClick={goH} style={{display:'block',margin:'10px auto 0',color:S.muted,background:'none',border:'none',cursor:'pointer',fontSize:12}}>← Нүүр</button>
-  </div></div>;
-}
-
-function Lbl({children}){return<label style={{display:'block',fontSize:13,fontWeight:600,marginBottom:4}}>{children}</label>;}
-function Inp({v,set,ph,tp}){return<input value={v} onChange={e=>set(e.target.value)} placeholder={ph} type={tp||'text'} required style={{width:'100%',padding:'11px 14px',border:`1px solid ${S.border}`,borderRadius:10,marginBottom:14,outline:'none'}}/>;}
-
-// === ADMIN ===
-function AdminP({teachers,pending,courses,news,onApprove,onReject,onRm,onDelC,onAddN,onDelN,getAv}){
-  const [tab,setTab]=useState('pending');const [nf,setNf]=useState({title:'',content:''});
-  const tabs=[{id:'pending',n:'Хүсэлтүүд',c:pending.length},{id:'teachers',n:'Багш нар',c:teachers.length},{id:'courses',n:'Сургалтууд',c:courses.length},{id:'news',n:'Мэдээ',c:news.length}];
-  return<div style={{paddingTop:24,animation:'fadeUp 0.3s'}}>
-    <h1 style={{fontSize:22,fontWeight:800,marginBottom:20}}>⚙️ Админ удирдлага</h1>
-    <div style={{display:'flex',gap:8,marginBottom:20,flexWrap:'wrap'}}>
-      {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} className="bh" style={{padding:'9px 16px',borderRadius:10,fontSize:13,fontWeight:600,border:'none',background:tab===t.id?S.primary:'#fff',color:tab===t.id?'#fff':S.text,boxShadow:S.shadow,display:'flex',alignItems:'center',gap:6}}>
-        {t.n}{t.c>0&&<span style={{background:tab===t.id?'rgba(255,255,255,0.3)':S.primaryLight,color:tab===t.id?'#fff':S.primary,padding:'1px 7px',borderRadius:20,fontSize:10,fontWeight:700}}>{t.c}</span>}
-      </button>)}
-    </div>
-    <div style={{background:'#fff',borderRadius:14,padding:24,boxShadow:S.shadow,minHeight:300}}>
-      {tab==='pending'&&(pending.length>0?pending.map(t=><div key={t.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 0',borderBottom:`1px solid ${S.border}`}}>
-        <div><div style={{fontWeight:600,fontSize:15}}>{t.name}</div><div style={{fontSize:12,color:S.muted}}>@{t.username} • {t.email} • {ago(t.createdAt)}</div></div>
-        <div style={{display:'flex',gap:8}}><button onClick={()=>onApprove(t.id)} className="bh" style={{padding:'7px 14px',background:S.success,color:'#fff',border:'none',borderRadius:8,fontSize:12,fontWeight:600}}>✓ Зөвшөөрөх</button><button onClick={()=>onReject(t.id)} className="bh" style={{padding:'7px 14px',background:S.danger,color:'#fff',border:'none',borderRadius:8,fontSize:12,fontWeight:600}}>✕ Татгалзах</button></div>
-      </div>):<MT i="📋" t="Хүсэлт байхгүй" s="Багш бүртгүүлэхэд энд харагдана"/>)}
-      {tab==='teachers'&&(teachers.length>0?teachers.map(t=><div key={t.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 0',borderBottom:`1px solid ${S.border}`}}>
-        <div style={{display:'flex',alignItems:'center',gap:12}}><Av uid={t.id} name={t.name} src={getAv(t.id)} sz={40}/><div><div style={{fontWeight:600}}>{t.name}</div><div style={{fontSize:12,color:S.muted}}>@{t.username} • {t.email||'—'}</div></div></div>
-        <button onClick={()=>onRm(t.id)} className="bh" style={{padding:'7px 12px',background:'#fef2f2',color:S.danger,border:'1px solid #fecaca',borderRadius:8,fontSize:12}}>Хасах</button>
-      </div>):<MT i="👤" t="Багш байхгүй"/>)}
-      {tab==='courses'&&(courses.length>0?courses.map(c=><div key={c.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 0',borderBottom:`1px solid ${S.border}`}}>
-        <div><div style={{fontWeight:600,fontSize:14}}>{c.title}</div><div style={{fontSize:12,color:S.muted}}>👤 {c.teacherName} • {c.isFree?'Үнэгүй':fmt(c.price)} • {(c.lessons||[]).filter(l=>l.videoUrl).length} видео</div></div>
-        <button onClick={()=>onDelC(c.id)} className="bh" style={{padding:'5px 10px',background:'#fef2f2',color:S.danger,border:'1px solid #fecaca',borderRadius:6,fontSize:11}}>Устгах</button>
-      </div>):<MT i="📚" t="Байхгүй"/>)}
-      {tab==='news'&&<><div style={{background:S.bg,borderRadius:12,padding:18,marginBottom:18}}>
-        <h3 style={{fontSize:14,fontWeight:700,marginBottom:10}}>📝 Шинэ мэдээ</h3>
-        <input value={nf.title} onChange={e=>setNf(f=>({...f,title:e.target.value}))} placeholder="Гарчиг" style={{width:'100%',padding:'10px 12px',border:`1px solid ${S.border}`,borderRadius:8,marginBottom:8,outline:'none'}}/>
-        <textarea value={nf.content} onChange={e=>setNf(f=>({...f,content:e.target.value}))} placeholder="Агуулга" rows={3} style={{width:'100%',padding:'10px 12px',border:`1px solid ${S.border}`,borderRadius:8,marginBottom:8,outline:'none',resize:'vertical'}}/>
-        <button onClick={()=>{if(nf.title&&nf.content){onAddN(nf);setNf({title:'',content:''});}}} className="bh" style={{padding:'8px 18px',background:S.primary,color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600}}>Нийтлэх</button>
-      </div>{news.map(n=><div key={n.id} style={{display:'flex',justifyContent:'space-between',padding:'12px 0',borderBottom:`1px solid ${S.border}`}}><div><div style={{fontWeight:600,fontSize:14}}>{n.title}</div><div style={{fontSize:12,color:S.muted}}>{ago(n.date)}</div></div><button onClick={()=>onDelN(n.id)} className="bh" style={{padding:'4px 10px',background:'#fef2f2',color:S.danger,border:'1px solid #fecaca',borderRadius:6,fontSize:11}}>Устгах</button></div>)}</>}
-    </div>
-  </div>;
-}
-
-// === TEACHER ===
-function TeacherP({user,setUser,courses,onAdd,onDel,onUpd,av,onAv}){
-  const [tab,setTab]=useState('courses');const [show,setShow]=useState(false);const [edit,setEdit]=useState(null);
-  const colors=['#1e40af','#dc2626','#059669','#7c3aed','#b91c1c','#0ea5e9','#d97706','#be185d','#0d9488','#6366f1'];
-  const blank={title:'',cat:'computer',price:0,isFree:true,desc:'',color:colors[0],lessons:[{title:'',videoUrl:''}]};
-  const [f,setF]=useState(blank);const [pn,setPn]=useState(user.name);
-
-  const addL=()=>setF(x=>({...x,lessons:[...x.lessons,{title:'',videoUrl:''}]}));
-  const updL=(i,k,v)=>setF(x=>({...x,lessons:x.lessons.map((l,j)=>j===i?{...l,[k]:v}:l)}));
-  const rmL=i=>setF(x=>({...x,lessons:x.lessons.filter((_,j)=>j!==i)}));
-  const doAdd=()=>{if(!f.title)return;onAdd({...f,price:f.isFree?0:Number(f.price),lessons:f.lessons.filter(l=>l.title)});setF({...blank,color:colors[Math.floor(Math.random()*colors.length)]});setShow(false);};
-  const doUpd=()=>{if(!edit)return;onUpd(edit,{...f,price:f.isFree?0:Number(f.price),lessons:f.lessons.filter(l=>l.title)});setEdit(null);setF(blank);};
-  const openE=c=>{setEdit(c.id);setF({title:c.title,cat:c.cat,price:c.price,isFree:c.isFree,desc:c.desc,color:c.color,lessons:c.lessons?.length?c.lessons:[{title:'',videoUrl:''}]});setShow(false);};
-
-  return<div style={{paddingTop:24,animation:'fadeUp 0.3s'}}>
-    <h1 style={{fontSize:22,fontWeight:800,marginBottom:20}}>🎓 Багшийн хэсэг</h1>
-    <div style={{display:'flex',gap:8,marginBottom:20}}>
-      {[['courses','📚 Хичээлүүд'],['profile','👤 Профайл']].map(([id,nm])=><button key={id} onClick={()=>{setTab(id);setEdit(null);}} className="bh" style={{padding:'9px 16px',borderRadius:10,fontSize:13,fontWeight:600,border:'none',background:tab===id?S.primary:'#fff',color:tab===id?'#fff':S.text,boxShadow:S.shadow}}>{nm}</button>)}
-    </div>
-    <div style={{background:'#fff',borderRadius:14,padding:24,boxShadow:S.shadow,minHeight:300}}>
-      {tab==='courses'&&<>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
-          <h2 style={{fontSize:16,fontWeight:700}}>Миний хичээлүүд ({courses.length})</h2>
-          {!edit&&<button onClick={()=>setShow(!show)} className="bh" style={{padding:'8px 16px',background:show?'#f1f5f9':S.primary,color:show?S.text:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600}}>{show?'✕ Хаах':'+ Хичээл нэмэх'}</button>}
-        </div>
-
-        {(show||edit)&&<div style={{background:S.bg,borderRadius:12,padding:18,marginBottom:18}}>
-          <h3 style={{fontSize:15,fontWeight:700,marginBottom:12}}>{edit?'✏️ Засах':'📖 Шинэ хичээл'}</h3>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
-            <div><Lbl>Нэр *</Lbl><input value={f.title} onChange={e=>setF(x=>({...x,title:e.target.value}))} placeholder="Хичээлийн нэр" style={{width:'100%',padding:'9px 12px',border:`1px solid ${S.border}`,borderRadius:8,outline:'none'}}/></div>
-            <div><Lbl>Ангилал</Lbl><select value={f.cat} onChange={e=>setF(x=>({...x,cat:e.target.value}))} style={{width:'100%',padding:'9px 12px',border:`1px solid ${S.border}`,borderRadius:8,outline:'none',background:'#fff'}}>{CATS.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-          </div>
-          <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:10}}>
-            <Lbl>Төлбөр:</Lbl>
-            {[['free','Үнэгүй'],['paid','Төлбөртэй']].map(([v,l])=><button key={v} type="button" onClick={()=>setF(x=>({...x,isFree:v==='free'}))} style={{padding:'6px 14px',borderRadius:8,border:f.isFree===(v==='free')?`2px solid ${S.primary}`:`1px solid ${S.border}`,background:f.isFree===(v==='free')?S.primaryLight:'#fff',fontSize:12,fontWeight:600,cursor:'pointer',color:f.isFree===(v==='free')?S.primaryDark:S.muted}}>{l}</button>)}
-            {!f.isFree&&<input type="number" value={f.price} onChange={e=>setF(x=>({...x,price:e.target.value}))} placeholder="₮" style={{width:100,padding:'7px 10px',border:`1px solid ${S.border}`,borderRadius:8,outline:'none'}}/>}
-          </div>
-          <textarea value={f.desc} onChange={e=>setF(x=>({...x,desc:e.target.value}))} placeholder="Тайлбар" rows={2} style={{width:'100%',padding:'9px 12px',border:`1px solid ${S.border}`,borderRadius:8,marginBottom:12,outline:'none',resize:'vertical'}}/>
-
-          {/* LESSONS WITH VIDEO */}
-          <div style={{marginBottom:12}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-              <label style={{fontSize:13,fontWeight:700}}>📹 Хичээлүүд</label>
-              <button type="button" onClick={addL} style={{fontSize:12,color:S.primary,background:'none',border:'none',fontWeight:600,cursor:'pointer'}}>+ Хичээл нэмэх</button>
-            </div>
-            {f.lessons.map((l,i)=><div key={i} style={{background:'#fff',border:`1px solid ${S.border}`,borderRadius:10,padding:12,marginBottom:8}}>
-              <div style={{display:'flex',gap:8,marginBottom:6}}>
-                <span style={{fontSize:12,fontWeight:700,color:S.primary,marginTop:8,flexShrink:0}}>{i+1}.</span>
-                <input value={l.title} onChange={e=>updL(i,'title',e.target.value)} placeholder="Хичээлийн нэр" style={{flex:1,padding:'8px 10px',border:`1px solid ${S.border}`,borderRadius:6,outline:'none',fontSize:13}}/>
-                {f.lessons.length>1&&<button type="button" onClick={()=>rmL(i)} style={{color:S.danger,background:'none',border:'none',fontSize:14,cursor:'pointer'}}>✕</button>}
-              </div>
-              <input value={l.videoUrl} onChange={e=>updL(i,'videoUrl',e.target.value)} placeholder="YouTube линк (жишээ: https://youtube.com/watch?v=abc123)" style={{width:'100%',padding:'8px 10px',border:`1px solid ${S.border}`,borderRadius:6,outline:'none',fontSize:12}}/>
-              {l.videoUrl&&ytId(l.videoUrl)&&<div style={{marginTop:6}}>
-                <div style={{fontSize:11,color:S.success,marginBottom:6}}>✓ YouTube видео холбогдсон</div>
-                <div style={{position:'relative',paddingBottom:'56.25%',height:0,borderRadius:8,overflow:'hidden'}}>
-                  <iframe src={`https://www.youtube.com/embed/${ytId(l.videoUrl)}`} title="preview" frameBorder="0" style={{position:'absolute',top:0,left:0,width:'100%',height:'100%'}}/>
+// ==================== NAV ====================
+function Nav({ page, setPage, user, userRole, userProfile, showDropdown, setShowDropdown, dropRef, setShowLogin, setShowSignup, handleSignout, pendingTeachers }) {
+  const roleLabel = userRole === "admin" ? "⚙️ Админ" : userRole === "teacher" ? "🎓 Багш" : "👤";
+  return (
+    <nav className="nav">
+      <div className="logo" onClick={() => setPage("home")}>Edu<span>MN</span></div>
+      <div className="nav-links">
+        <button className="btn btn-outline btn-sm" onClick={() => setPage("courses")}>Сургалтууд</button>
+        <button className="btn btn-outline btn-sm" onClick={() => setPage("news")}>Мэдээ</button>
+        <button className="btn btn-outline btn-sm" onClick={() => setPage("contact")}>Холбоо</button>
+        {!user ? (
+          <>
+            <button className="btn btn-outline btn-sm" onClick={() => setShowLogin(true)}>Нэвтрэх</button>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowSignup(true)}>Бүртгүүлэх</button>
+          </>
+        ) : (
+          <div className="user-menu" ref={dropRef}>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowDropdown(!showDropdown)}>
+              {roleLabel} {pendingTeachers?.length > 0 && userRole === "admin" && <span style={{ background: "#ef4444", borderRadius: "99px", padding: "1px 6px", fontSize: 11, marginLeft: 4 }}>{pendingTeachers.length}</span>} ▾
+            </button>
+            {showDropdown && (
+              <div className="user-dropdown">
+                <div style={{ padding: "12px 16px", borderBottom: "1px solid #f3f4f6", fontWeight: 700, color: "#374151" }}>
+                  {userProfile?.name || user.displayName || "Хэрэглэгч"}
                 </div>
-              </div>}
-              {l.videoUrl&&!ytId(l.videoUrl)&&l.videoUrl.startsWith('http')&&<div style={{marginTop:4,fontSize:11,color:S.accent}}>⚠️ YouTube линк оруулна уу (жишээ: https://youtube.com/watch?v=...)</div>}
-            </div>)}
+                {userRole === "admin" && <button onClick={() => { setPage("admin"); setShowDropdown(false); }}>⚙️ Админ самбар</button>}
+                {userRole === "teacher" && <button onClick={() => { setPage("teacher"); setShowDropdown(false); }}>🎓 Багшийн самбар</button>}
+                {userRole === "user" && <button onClick={() => { setPage("profile"); setShowDropdown(false); }}>👤 Миний профайл</button>}
+                <button onClick={handleSignout} style={{ color: "#ef4444" }}>🚪 Гарах</button>
+              </div>
+            )}
           </div>
+        )}
+      </div>
+    </nav>
+  );
+}
 
-          <div style={{marginBottom:12}}><label style={{fontSize:12,fontWeight:600,marginBottom:4,display:'block'}}>Өнгө</label><div style={{display:'flex',gap:5}}>{colors.map(c=><button key={c} onClick={()=>setF(x=>({...x,color:c}))} style={{width:24,height:24,borderRadius:'50%',background:c,border:f.color===c?'3px solid #000':'2px solid transparent',cursor:'pointer'}}/>)}</div></div>
-          <div style={{display:'flex',gap:8}}>
-            {edit?<><button onClick={doUpd} className="bh" style={{padding:'9px 20px',background:S.primary,color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600}}>Хадгалах</button>
-              <button onClick={()=>{setEdit(null);setF(blank);}} style={{padding:'9px 20px',background:'#f1f5f9',color:S.text,border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>Цуцлах</button></>
-            :<button onClick={doAdd} className="bh" style={{padding:'9px 20px',background:S.primary,color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600}}>Нэмэх</button>}
-          </div>
-        </div>}
+// ==================== LOGIN MODAL ====================
+function LoginModal({ onClose, onAdminLogin, setUser, setUserRole, setUserProfile, notify, db, setPage }) {
+  const [form, setForm] = useState({ username: "", password: "" });
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-        {courses.length>0?courses.map(c=><div key={c.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 0',borderBottom:`1px solid ${S.border}`}}>
-          <div style={{display:'flex',alignItems:'center',gap:10}}>
-            <div style={{width:40,height:40,borderRadius:8,background:`${c.color}22`,display:'flex',alignItems:'center',justifyContent:'center',color:c.color,fontSize:14,fontWeight:700}}>{c.title[0]}</div>
-            <div><div style={{fontWeight:600,fontSize:14}}>{c.title}</div><div style={{fontSize:12,color:S.muted}}>{c.isFree?'Үнэгүй':fmt(c.price)} • {(c.lessons||[]).filter(l=>l.videoUrl).length}/{(c.lessons||[]).length} видео</div></div>
-          </div>
-          <div style={{display:'flex',gap:6}}>
-            <button onClick={()=>openE(c)} className="bh" style={{padding:'5px 10px',background:S.primaryLight,color:S.primaryDark,border:`1px solid ${S.primary}33`,borderRadius:6,fontSize:11,fontWeight:600}}>✏️ Засах</button>
-            <button onClick={()=>onDel(c.id)} className="bh" style={{padding:'5px 10px',background:'#fef2f2',color:S.danger,border:'1px solid #fecaca',borderRadius:6,fontSize:11}}>Устгах</button>
-          </div>
-        </div>):<MT i="📚" t="Хичээл нэмээгүй"/>}
-      </>}
+  const handleSubmit = async () => {
+    if (!form.username || !form.password) { setError("Бүх талбарыг бөглөнө үү"); return; }
+    setLoading(true);
+    setError("");
+    // Admin login
+    const isAdmin = await onAdminLogin(form.username, form.password);
+    if (isAdmin) { setLoading(false); return; }
+    // Firebase email login
+    try {
+      const cred = await signInWithEmailAndPassword(auth, form.username, form.password);
+      const profileDoc = await getDoc(doc(db, "users", cred.user.uid));
+      if (profileDoc.exists()) {
+        const profile = profileDoc.data();
+        setUser(cred.user); setUserRole(profile.role); setUserProfile(profile);
+        if (profile.role === "teacher") setPage("teacher");
+        else if (profile.role === "user") setPage("home");
+        notify("Амжилттай нэвтэрлээ!");
+        onClose();
+      }
+    } catch (e) {
+      setError("Нэвтрэх нэр эсвэл нууц үг буруу байна");
+    }
+    setLoading(false);
+  };
 
-      {tab==='profile'&&<div style={{maxWidth:360}}>
-        <h2 style={{fontSize:16,fontWeight:700,marginBottom:18}}>👤 Профайл засах</h2>
-        <ImgPick src={av} onPick={onAv} sz={90}/>
-        <div style={{marginTop:16}}>
-          <Lbl>Нэр</Lbl><input value={pn} onChange={e=>setPn(e.target.value)} style={{width:'100%',padding:'10px 12px',border:`1px solid ${S.border}`,borderRadius:8,marginBottom:14,outline:'none'}}/>
-          <Lbl>Имэйл</Lbl><input value={user.email||''} disabled style={{width:'100%',padding:'10px 12px',border:`1px solid ${S.border}`,borderRadius:8,marginBottom:14,outline:'none',background:'#f9fafb',color:S.muted}}/>
-          <button onClick={()=>setUser(u=>({...u,name:pn}))} className="bh" style={{padding:'10px 22px',background:S.primary,color:'#fff',border:'none',borderRadius:8,fontSize:14,fontWeight:600}}>Хадгалах</button>
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <h2>🔐 Нэвтрэх</h2>
+        {error && <div className="alert alert-error">{error}</div>}
+        <div className="form-group">
+          <label>Имэйл / Нэвтрэх нэр</label>
+          <input value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} placeholder="имэйл@domain.com эсвэл Admin" />
         </div>
-      </div>}
+        <div className="form-group">
+          <label>Нууц үг</label>
+          <input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} onKeyDown={e => e.key === "Enter" && handleSubmit()} />
+        </div>
+        <button className="btn btn-primary" style={{ width: "100%", padding: "12px" }} onClick={handleSubmit} disabled={loading}>
+          {loading ? "Нэвтэрж байна..." : "Нэвтрэх"}
+        </button>
+        <div style={{ textAlign: "center", marginTop: 16, fontSize: 14, color: "#6b7280" }}>
+          <button style={{ background: "none", border: "none", cursor: "pointer", color: "#f59e0b", fontWeight: 600 }} onClick={onClose}>Хаах</button>
+        </div>
+      </div>
     </div>
-  </div>;
+  );
+}
+
+// ==================== SIGNUP MODAL ====================
+function SignupModal({ onClose, notify, db, setShowLogin }) {
+  const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "", role: "user" });
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!form.name || !form.email || !form.password || !form.confirm) { setError("Бүх талбарыг бөглөнө үү"); return; }
+    if (form.password !== form.confirm) { setError("Нууц үг таарахгүй байна"); return; }
+    if (form.password.length < 6) { setError("Нууц үг хамгийн багадаа 6 тэмдэгт байх ёстой"); return; }
+    setLoading(true); setError("");
+    try {
+      if (form.role === "teacher") {
+        // Add to pending teachers
+        const pendingRef = doc(collection(db, "pendingTeachers"));
+        await setDoc(pendingRef, {
+          name: form.name, email: form.email, password: form.password,
+          role: "teacher", status: "pending", createdAt: serverTimestamp()
+        });
+        setSuccess("Хүсэлт илгээгдлээ! Админ зөвшөөрснөөр нэвтрэх боломжтой болно.");
+      } else {
+        const cred = await createUserWithEmailAndPassword(auth, form.email, form.password);
+        await updateProfile(cred.user, { displayName: form.name });
+        await setDoc(doc(db, "users", cred.user.uid), {
+          name: form.name, email: form.email, role: "user", createdAt: serverTimestamp()
+        });
+        notify("Бүртгэл амжилттай!");
+        onClose();
+      }
+    } catch (e) {
+      if (e.code === "auth/email-already-in-use") setError("Энэ имэйл аль хэдийн бүртгэлтэй байна");
+      else setError("Алдаа гарлаа: " + e.message);
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <h2>📝 Бүртгүүлэх</h2>
+        {error && <div className="alert alert-error">{error}</div>}
+        {success && <div className="alert alert-success">{success}<br /><button className="btn btn-primary btn-sm" style={{ marginTop: 8 }} onClick={() => { onClose(); setShowLogin(true); }}>Нэвтрэх</button></div>}
+        {!success && <>
+          <div className="form-group">
+            <label>Нэр</label>
+            <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Таны нэр" />
+          </div>
+          <div className="form-group">
+            <label>Имэйл</label>
+            <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="email@example.com" />
+          </div>
+          <div className="form-group">
+            <label>Нууц үг</label>
+            <input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="Хамгийн багадаа 6 тэмдэгт" />
+          </div>
+          <div className="form-group">
+            <label>Нууц үг давтах</label>
+            <input type="password" value={form.confirm} onChange={e => setForm({ ...form, confirm: e.target.value })} placeholder="Нууц үгийг дахин оруулна уу" />
+            {form.confirm && (form.password === form.confirm
+              ? <span style={{ color: "#10b981", fontSize: 12 }}>✓ Таарч байна</span>
+              : <span style={{ color: "#ef4444", fontSize: 12 }}>⚠️ Таарахгүй байна</span>)}
+          </div>
+          <div className="form-group">
+            <label>Төрөл</label>
+            <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
+              <option value="user">Суралцагч</option>
+              <option value="teacher">Багш болон бүртгүүлэх</option>
+            </select>
+          </div>
+          {form.role === "teacher" && <div className="alert" style={{ background: "#fef3c7", color: "#92400e" }}>⚠️ Багшийн хүсэлт админ зөвшөөрснөөр идэвхжинэ</div>}
+          <button className="btn btn-primary" style={{ width: "100%", padding: 12 }} onClick={handleSubmit} disabled={loading}>
+            {loading ? "Бүртгэж байна..." : "Бүртгүүлэх"}
+          </button>
+        </>}
+      </div>
+    </div>
+  );
+}
+
+// ==================== HOME PAGE ====================
+function HomePage({ courses, news, setPage, setSelectedCourse, setSelectedCat, user, userRole, setShowLogin }) {
+  return (
+    <>
+      <div className="hero">
+        <h1>Тав тухтай <span>суралц</span></h1>
+        <p>Монголын шилдэг багш нараас мэргэжлийн хичээл үзэж чадвараа хөгжүүл</p>
+        <div className="hero-btns">
+          <button className="btn btn-primary" style={{ fontSize: 16, padding: "12px 32px" }} onClick={() => setPage("courses")}>Сургалтуудыг үзэх</button>
+          {!user && <button className="btn btn-outline" style={{ fontSize: 16, padding: "12px 32px" }} onClick={() => setShowLogin(true)}>Нэвтрэх</button>}
+        </div>
+      </div>
+
+      <div className="section">
+        <div className="section-title">📂 Ангилалууд</div>
+        <div className="cat-grid">
+          {CATEGORIES.map(cat => (
+            <div key={cat.id} className="cat-card" onClick={() => { setSelectedCat(cat.id); setPage("courses"); }}>
+              <div className="cat-icon">{cat.icon}</div>
+              <div className="cat-name">{cat.name}</div>
+              <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 4 }}>{courses.filter(c => c.category === cat.id).length} сургалт</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="section-title">🔥 Шинэ сургалтууд</div>
+        <p className="section-sub">Шинээр нэмэгдсэн сургалтуудыг үзэх</p>
+        {courses.length === 0 ? (
+          <div className="empty-state"><div className="empty-icon">📭</div><p>Одоогоор сургалт байхгүй байна</p></div>
+        ) : (
+          <div className="grid">
+            {courses.slice(0, 6).map(c => (
+              <CourseCard key={c.id} course={c} onClick={() => { setSelectedCourse(c); setPage("courseDetail"); }} />
+            ))}
+          </div>
+        )}
+        {courses.length > 6 && <div style={{ textAlign: "center", marginTop: 24 }}>
+          <button className="btn btn-primary" onClick={() => setPage("courses")}>Бүгдийг үзэх →</button>
+        </div>}
+      </div>
+
+      {news.length > 0 && <div className="section" style={{ paddingTop: 0 }}>
+        <div className="section-title">📰 Сүүлийн мэдээ</div>
+        {news.slice(0, 2).map(n => (
+          <div key={n.id} className="news-card">
+            <h3>{n.title}</h3>
+            <p>{n.content?.substring(0, 150)}{n.content?.length > 150 ? "..." : ""}</p>
+            <div className="news-date">{n.createdAt?.toDate?.()?.toLocaleDateString("mn-MN") || ""}</div>
+          </div>
+        ))}
+        <button className="btn btn-outline" style={{ color: "#1a1a2e", borderColor: "#1a1a2e", marginTop: 8 }} onClick={() => setPage("news")}>Бүх мэдээ →</button>
+      </div>}
+    </>
+  );
+}
+
+// ==================== COURSE CARD ====================
+function CourseCard({ course, onClick }) {
+  const cat = CATEGORIES.find(c => c.id === course.category);
+  return (
+    <div className="card" onClick={onClick}>
+      <div className="card-img" style={{ background: cat ? undefined : "linear-gradient(135deg, #667eea, #764ba2)" }}>
+        {cat ? <span style={{ fontSize: 48 }}>{cat.icon}</span> : "📚"}
+      </div>
+      <div className="card-body">
+        <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+          {cat && <span className="badge badge-cat">{cat.name}</span>}
+          <span className={`badge ${course.isFree ? "badge-free" : "badge-paid"}`}>{course.isFree ? "Үнэгүй" : "Төлбөртэй"}</span>
+        </div>
+        <div className="card-title">{course.title}</div>
+        <div className="card-meta">
+          <div className="avatar">
+            {course.teacherPhoto ? <img src={course.teacherPhoto} alt="" /> : (course.teacherName?.[0] || "T")}
+          </div>
+          <span style={{ fontSize: 13, color: "#6b7280" }}>{course.teacherName}</span>
+        </div>
+        <div className="price">{course.isFree ? "Үнэгүй" : `${(course.price || 0).toLocaleString()}₮`}</div>
+      </div>
+    </div>
+  );
+}
+
+// ==================== COURSES PAGE ====================
+function CoursesPage({ courses, setSelectedCourse, setPage, selectedCat, setSelectedCat, searchQ, setSearchQ, user, userRole, setShowLogin }) {
+  return (
+    <div className="section">
+      <div className="section-title">📚 Бүх сургалтууд</div>
+      <div className="search-bar">
+        <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="🔍 Сургалт хайх..." />
+      </div>
+      <div className="tabs">
+        <div className={`tab ${!selectedCat ? "active" : ""}`} onClick={() => setSelectedCat(null)}>Бүгд</div>
+        {CATEGORIES.map(cat => (
+          <div key={cat.id} className={`tab ${selectedCat === cat.id ? "active" : ""}`} onClick={() => setSelectedCat(cat.id)}>
+            {cat.icon} {cat.name}
+          </div>
+        ))}
+      </div>
+      {courses.length === 0 ? (
+        <div className="empty-state"><div className="empty-icon">🔍</div><p>Сургалт олдсонгүй</p></div>
+      ) : (
+        <div className="grid">
+          {courses.map(c => <CourseCard key={c.id} course={c} onClick={() => { setSelectedCourse(c); setPage("courseDetail"); }} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ==================== COURSE DETAIL PAGE ====================
+function CourseDetailPage({ course, courses, teachers, user, userRole, setShowLogin, notify, db, setPage }) {
+  const [enrolled, setEnrolled] = useState(false);
+  const [showPayment, setShowPayment] = useState(false);
+  const ytId = getYouTubeId(course.videoUrl);
+  const canWatch = course.isFree || enrolled || userRole === "admin" || userRole === "teacher";
+  const teacher = teachers.find(t => t.id === course.teacherId);
+
+  useEffect(() => {
+    if (!user || userRole !== "user") return;
+    getDoc(doc(db, "users", user.uid)).then(d => {
+      if (d.exists()) {
+        const enrolled_list = d.data().enrolledCourses || [];
+        setEnrolled(enrolled_list.includes(course.id));
+      }
+    });
+  }, [user, course.id, db, userRole]);
+
+  const handleEnroll = async () => {
+    if (!user) { setShowLogin(true); return; }
+    if (course.isFree) {
+      await updateDoc(doc(db, "users", user.uid), {
+        enrolledCourses: [...(user.enrolledCourses || []), course.id]
+      });
+      setEnrolled(true);
+      notify("Амжилттай бүртгүүллээ!");
+    } else {
+      setShowPayment(true);
+    }
+  };
+
+  return (
+    <div className="course-detail">
+      <button className="btn btn-outline" style={{ color: "#374151", borderColor: "#e5e7eb", marginBottom: 16 }} onClick={() => setPage("courses")}>← Буцах</button>
+
+      <div className="video-container">
+        {canWatch && ytId ? (
+          <iframe src={`https://www.youtube.com/embed/${ytId}`} allowFullScreen title={course.title} />
+        ) : (
+          <div className="video-lock">
+            <div className="lock-icon">🔒</div>
+            <div style={{ fontWeight: 600, fontSize: 18 }}>Бүртгүүлснийхээ дараа үзнэ үү</div>
+            {!ytId && canWatch && <div style={{ color: "#9ca3af", fontSize: 14 }}>Видео удахгүй нэмэгдэнэ</div>}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 16, marginBottom: 24, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+            <span className={`badge ${course.isFree ? "badge-free" : "badge-paid"}`}>{course.isFree ? "Үнэгүй" : "Төлбөртэй"}</span>
+            {CATEGORIES.find(c => c.id === course.category) && <span className="badge badge-cat">{CATEGORIES.find(c => c.id === course.category)?.name}</span>}
+          </div>
+          <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 12 }}>{course.title}</h1>
+          <p style={{ color: "#6b7280", lineHeight: 1.7 }}>{course.description}</p>
+        </div>
+        <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 4px 20px rgba(0,0,0,0.08)", minWidth: 220, textAlign: "center" }}>
+          <div className="price" style={{ fontSize: 28, marginBottom: 16 }}>{course.isFree ? "Үнэгүй" : `${(course.price || 0).toLocaleString()}₮`}</div>
+          {!enrolled && userRole === "user" && (
+            <button className="btn btn-primary" style={{ width: "100%", padding: 12 }} onClick={handleEnroll}>
+              {course.isFree ? "Үнэгүй бүртгүүлэх" : "Худалдаж авах"}
+            </button>
+          )}
+          {enrolled && <div className="alert alert-success">✅ Бүртгүүлсэн</div>}
+          {!user && <button className="btn btn-primary" style={{ width: "100%", padding: 12 }} onClick={() => setShowLogin(true)}>Нэвтрэх</button>}
+        </div>
+      </div>
+
+      {teacher && (
+        <div className="teacher-card">
+          <div className="teacher-avatar">
+            {teacher.photoUrl ? <img src={teacher.photoUrl} alt="" /> : (teacher.name?.[0] || "T")}
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>{teacher.name}</div>
+            <div style={{ color: "#6b7280", fontSize: 14 }}>{teacher.email}</div>
+            {teacher.bio && <div style={{ color: "#374151", fontSize: 14, marginTop: 4 }}>{teacher.bio}</div>}
+          </div>
+        </div>
+      )}
+
+      {showPayment && <PaymentModal course={course} onClose={() => setShowPayment(false)} notify={notify} />}
+    </div>
+  );
+}
+
+// ==================== PAYMENT MODAL ====================
+function PaymentModal({ course, onClose, notify }) {
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <h2>💳 Төлбөр төлөх</h2>
+        <div style={{ background: "#f9fafb", borderRadius: 12, padding: 16, marginBottom: 20 }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>{course.title}</div>
+          <div className="price">{(course.price || 0).toLocaleString()}₮</div>
+        </div>
+        <div className="form-group">
+          <label>Төлбөрийн арга</label>
+          <select defaultValue="qpay">
+            <option value="qpay">QPay</option>
+            <option value="transfer">Банкны шилжүүлэг</option>
+            <option value="wallet">Хэтэвч</option>
+          </select>
+        </div>
+        <div className="alert" style={{ background: "#e0f2fe", color: "#0c4a6e" }}>
+          📱 QPay апп нээгээд QR уншуулна уу<br />
+          🏦 Банкны шилжүүлэг: 9903-3062 дансанд<br />
+          📞 Лавлах: 9903-3062
+        </div>
+        <button className="btn btn-success" style={{ width: "100%", padding: 12 }} onClick={() => { notify("Төлбөрийн мэдэгдэл илгээгдлээ!"); onClose(); }}>Баталгаажуулах</button>
+        <button className="btn btn-outline" style={{ width: "100%", padding: 12, marginTop: 8, color: "#374151", borderColor: "#e5e7eb" }} onClick={onClose}>Хаах</button>
+      </div>
+    </div>
+  );
+}
+
+// ==================== NEWS PAGE ====================
+function NewsPage({ news }) {
+  return (
+    <div className="section">
+      <div className="section-title">📰 Мэдээ мэдээлэл</div>
+      {news.length === 0 ? (
+        <div className="empty-state"><div className="empty-icon">📭</div><p>Одоогоор мэдээ байхгүй</p></div>
+      ) : news.map(n => (
+        <div key={n.id} className="news-card">
+          <h3>{n.title}</h3>
+          <p style={{ marginTop: 8 }}>{n.content}</p>
+          <div className="news-date">{n.createdAt?.toDate?.()?.toLocaleDateString("mn-MN") || ""}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ==================== ADMIN PAGE ====================
+function AdminPage({ pendingTeachers, teachers, courses, news, db, notify, adminTab, setAdminTab }) {
+  const [showAddNews, setShowAddNews] = useState(false);
+  const [newsForm, setNewsForm] = useState({ title: "", content: "" });
+
+  const approveTeacher = async (pt) => {
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, pt.email, pt.password);
+      await setDoc(doc(db, "users", cred.user.uid), {
+        name: pt.name, email: pt.email, role: "teacher",
+        photoUrl: "", bio: "", createdAt: serverTimestamp()
+      });
+      await deleteDoc(doc(db, "pendingTeachers", pt.id));
+      notify(`${pt.name} багшийг зөвшөөрлөө!`);
+    } catch (e) {
+      notify("Алдаа: " + e.message, "#ef4444");
+    }
+  };
+
+  const rejectTeacher = async (id) => {
+    await deleteDoc(doc(db, "pendingTeachers", id));
+    notify("Хүсэлт татгалзагдлаа");
+  };
+
+  const addNews = async () => {
+    if (!newsForm.title || !newsForm.content) { notify("Бүх талбарыг бөглөнө үү", "#ef4444"); return; }
+    await setDoc(doc(collection(db, "news")), { ...newsForm, createdAt: serverTimestamp() });
+    setNewsForm({ title: "", content: "" });
+    setShowAddNews(false);
+    notify("Мэдээ нийтлэгдлээ!");
+  };
+
+  const deleteNews = async (id) => {
+    await deleteDoc(doc(db, "news", id));
+    notify("Мэдээ устгагдлаа");
+  };
+
+  const deleteCourse = async (id) => {
+    await deleteDoc(doc(db, "courses", id));
+    notify("Сургалт устгагдлаа");
+  };
+
+  return (
+    <div className="section">
+      <div className="section-title">⚙️ Админ самбар</div>
+      <div className="tabs">
+        <div className={`tab ${adminTab === "teachers" ? "active" : ""}`} onClick={() => setAdminTab("teachers")}>
+          Багшийн хүсэлт {pendingTeachers.length > 0 && <span style={{ background: "#ef4444", color: "#fff", borderRadius: "99px", padding: "1px 6px", fontSize: 11, marginLeft: 4 }}>{pendingTeachers.length}</span>}
+        </div>
+        <div className={`tab ${adminTab === "allteachers" ? "active" : ""}`} onClick={() => setAdminTab("allteachers")}>Багш нар</div>
+        <div className={`tab ${adminTab === "courses" ? "active" : ""}`} onClick={() => setAdminTab("courses")}>Сургалтууд</div>
+        <div className={`tab ${adminTab === "news" ? "active" : ""}`} onClick={() => setAdminTab("news")}>Мэдээ</div>
+      </div>
+
+      {adminTab === "teachers" && (
+        <div className="admin-panel">
+          <h3>Багшийн хүсэлтүүд ({pendingTeachers.length})</h3>
+          {pendingTeachers.length === 0 ? <div className="empty-state"><div className="empty-icon">✅</div><p>Шинэ хүсэлт байхгүй</p></div> : (
+            <table className="table">
+              <thead><tr><th>Нэр</th><th>Имэйл</th><th>Огноо</th><th>Үйлдэл</th></tr></thead>
+              <tbody>{pendingTeachers.map(pt => (
+                <tr key={pt.id}>
+                  <td><strong>{pt.name}</strong></td>
+                  <td>{pt.email}</td>
+                  <td>{pt.createdAt?.toDate?.()?.toLocaleDateString("mn-MN") || "-"}</td>
+                  <td style={{ display: "flex", gap: 8 }}>
+                    <button className="btn btn-success btn-sm" onClick={() => approveTeacher(pt)}>✓ Зөвшөөрөх</button>
+                    <button className="btn btn-danger btn-sm" onClick={() => rejectTeacher(pt.id)}>✗ Татгалзах</button>
+                  </td>
+                </tr>
+              ))}</tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {adminTab === "allteachers" && (
+        <div className="admin-panel">
+          <h3>Бүх багш нар ({teachers.length})</h3>
+          <table className="table">
+            <thead><tr><th>Нэр</th><th>Имэйл</th><th>Сургалт</th></tr></thead>
+            <tbody>{teachers.map(t => (
+              <tr key={t.id}>
+                <td><strong>{t.name}</strong></td>
+                <td>{t.email}</td>
+                <td>{courses.filter(c => c.teacherId === t.id).length} сургалт</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+
+      {adminTab === "courses" && (
+        <div className="admin-panel">
+          <h3>Бүх сургалтууд ({courses.length})</h3>
+          <table className="table">
+            <thead><tr><th>Гарчиг</th><th>Багш</th><th>Үнэ</th><th>Үйлдэл</th></tr></thead>
+            <tbody>{courses.map(c => (
+              <tr key={c.id}>
+                <td><strong>{c.title}</strong></td>
+                <td>{c.teacherName}</td>
+                <td>{c.isFree ? <span className="badge badge-free">Үнэгүй</span> : `${(c.price || 0).toLocaleString()}₮`}</td>
+                <td><button className="btn btn-danger btn-sm" onClick={() => deleteCourse(c.id)}>Устгах</button></td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+
+      {adminTab === "news" && (
+        <div className="admin-panel">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <h3 style={{ margin: 0 }}>Мэдээ ({news.length})</h3>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowAddNews(!showAddNews)}>+ Мэдээ нэмэх</button>
+          </div>
+          {showAddNews && (
+            <div style={{ background: "#f9fafb", borderRadius: 12, padding: 20, marginBottom: 20 }}>
+              <div className="form-group"><label>Гарчиг</label><input value={newsForm.title} onChange={e => setNewsForm({ ...newsForm, title: e.target.value })} /></div>
+              <div className="form-group"><label>Агуулга</label><textarea value={newsForm.content} onChange={e => setNewsForm({ ...newsForm, content: e.target.value })} /></div>
+              <button className="btn btn-primary" onClick={addNews}>Нийтлэх</button>
+            </div>
+          )}
+          {news.map(n => (
+            <div key={n.id} className="news-card">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <h3>{n.title}</h3>
+                <button className="btn btn-danger btn-sm" onClick={() => deleteNews(n.id)}>Устгах</button>
+              </div>
+              <p style={{ marginTop: 8 }}>{n.content?.substring(0, 100)}...</p>
+              <div className="news-date">{n.createdAt?.toDate?.()?.toLocaleDateString("mn-MN") || ""}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ==================== TEACHER PAGE ====================
+function TeacherPage({ user, userProfile, courses, db, notify, setUserProfile }) {
+  const [showAddCourse, setShowAddCourse] = useState(false);
+  const [courseForm, setCourseForm] = useState({ title: "", description: "", category: "computer", isFree: true, price: "", videoUrl: "" });
+  const [profileForm, setProfileForm] = useState({ bio: "" });
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(userProfile?.photoUrl || "");
+  const [tab, setTab] = useState("courses");
+  const myCourses = courses.filter(c => c.teacherId === user?.uid);
+
+  const handlePhotoChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 500 * 1024) { notify("Зураг 500KB-аас бага байх ёстой", "#ef4444"); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => { setPhotoPreview(ev.target.result); setPhotoFile(ev.target.result); };
+    reader.readAsDataURL(file);
+  };
+
+  const saveProfile = async () => {
+    const updates = { bio: profileForm.bio || userProfile?.bio || "" };
+    if (photoFile) updates.photoUrl = photoFile;
+    await updateDoc(doc(db, "users", user.uid), updates);
+    setUserProfile({ ...userProfile, ...updates });
+    notify("Профайл хадгалагдлаа!");
+  };
+
+  const addCourse = async () => {
+    if (!courseForm.title || !courseForm.description) { notify("Бүх талбарыг бөглөнө үү", "#ef4444"); return; }
+    await setDoc(doc(collection(db, "courses")), {
+      ...courseForm,
+      price: courseForm.isFree ? 0 : Number(courseForm.price),
+      teacherId: user.uid,
+      teacherName: userProfile?.name || user.displayName,
+      teacherPhoto: userProfile?.photoUrl || "",
+      createdAt: serverTimestamp()
+    });
+    setCourseForm({ title: "", description: "", category: "computer", isFree: true, price: "", videoUrl: "" });
+    setShowAddCourse(false);
+    notify("Сургалт нэмэгдлээ!");
+  };
+
+  const deleteCourse = async (id) => {
+    await deleteDoc(doc(db, "courses", id));
+    notify("Сургалт устгагдлаа");
+  };
+
+  return (
+    <div className="section">
+      <div className="section-title">🎓 Багшийн самбар</div>
+      <div className="tabs">
+        <div className={`tab ${tab === "courses" ? "active" : ""}`} onClick={() => setTab("courses")}>Миний сургалтууд</div>
+        <div className={`tab ${tab === "profile" ? "active" : ""}`} onClick={() => setTab("profile")}>Профайл</div>
+      </div>
+
+      {tab === "courses" && (
+        <div className="admin-panel">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <h3 style={{ margin: 0 }}>Миний сургалтууд ({myCourses.length})</h3>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowAddCourse(!showAddCourse)}>+ Сургалт нэмэх</button>
+          </div>
+
+          {showAddCourse && (
+            <div style={{ background: "#f9fafb", borderRadius: 12, padding: 20, marginBottom: 20 }}>
+              <h4 style={{ marginBottom: 16 }}>Шинэ сургалт нэмэх</h4>
+              <div className="form-group"><label>Сургалтын нэр</label><input value={courseForm.title} onChange={e => setCourseForm({ ...courseForm, title: e.target.value })} /></div>
+              <div className="form-group"><label>Тайлбар</label><textarea value={courseForm.description} onChange={e => setCourseForm({ ...courseForm, description: e.target.value })} /></div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Ангилал</label>
+                  <select value={courseForm.category} onChange={e => setCourseForm({ ...courseForm, category: e.target.value })}>
+                    {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Төлбөрийн төрөл</label>
+                  <select value={courseForm.isFree ? "free" : "paid"} onChange={e => setCourseForm({ ...courseForm, isFree: e.target.value === "free" })}>
+                    <option value="free">Үнэгүй</option>
+                    <option value="paid">Төлбөртэй</option>
+                  </select>
+                </div>
+              </div>
+              {!courseForm.isFree && <div className="form-group"><label>Үнэ (₮)</label><input type="number" value={courseForm.price} onChange={e => setCourseForm({ ...courseForm, price: e.target.value })} placeholder="50000" /></div>}
+              <div className="form-group">
+                <label>YouTube Видео линк</label>
+                <input value={courseForm.videoUrl} onChange={e => setCourseForm({ ...courseForm, videoUrl: e.target.value })} placeholder="https://youtube.com/watch?v=..." />
+                {courseForm.videoUrl && getYouTubeId(courseForm.videoUrl) && (
+                  <div style={{ marginTop: 8, borderRadius: 8, overflow: "hidden", aspectRatio: "16/9" }}>
+                    <iframe width="100%" height="100%" src={`https://www.youtube.com/embed/${getYouTubeId(courseForm.videoUrl)}`} title="preview" style={{ border: "none" }} />
+                  </div>
+                )}
+              </div>
+              <button className="btn btn-primary" onClick={addCourse}>Нэмэх</button>
+              <button className="btn btn-outline" style={{ marginLeft: 8, color: "#374151", borderColor: "#e5e7eb" }} onClick={() => setShowAddCourse(false)}>Болих</button>
+            </div>
+          )}
+
+          {myCourses.length === 0 ? <div className="empty-state"><div className="empty-icon">📭</div><p>Сургалт байхгүй байна</p></div> : (
+            <table className="table">
+              <thead><tr><th>Нэр</th><th>Ангилал</th><th>Үнэ</th><th>Видео</th><th>Үйлдэл</th></tr></thead>
+              <tbody>{myCourses.map(c => (
+                <tr key={c.id}>
+                  <td><strong>{c.title}</strong></td>
+                  <td>{CATEGORIES.find(cat => cat.id === c.category)?.name}</td>
+                  <td>{c.isFree ? <span className="badge badge-free">Үнэгүй</span> : `${(c.price || 0).toLocaleString()}₮`}</td>
+                  <td>{c.videoUrl ? "✅" : "❌"}</td>
+                  <td><button className="btn btn-danger btn-sm" onClick={() => deleteCourse(c.id)}>Устгах</button></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {tab === "profile" && (
+        <div className="profile-section">
+          <div className="profile-avatar-wrap">
+            <div className="profile-avatar-img">
+              {photoPreview || userProfile?.photoUrl ? <img src={photoPreview || userProfile?.photoUrl} alt="" /> : (userProfile?.name?.[0] || "T")}
+            </div>
+            <label className="btn btn-outline btn-sm" style={{ color: "#374151", borderColor: "#e5e7eb", cursor: "pointer" }}>
+              📷 Зураг солих
+              <input type="file" accept="image/*" style={{ display: "none" }} onChange={handlePhotoChange} />
+            </label>
+            <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 4 }}>500KB хүртэл</div>
+          </div>
+          <div className="form-group"><label>Нэр</label><input value={userProfile?.name || ""} disabled style={{ background: "#f9fafb" }} /></div>
+          <div className="form-group"><label>Имэйл</label><input value={userProfile?.email || ""} disabled style={{ background: "#f9fafb" }} /></div>
+          <div className="form-group">
+            <label>Тайлбар (bio)</label>
+            <textarea defaultValue={userProfile?.bio || ""} onChange={e => setProfileForm({ bio: e.target.value })} placeholder="Өөрийн тухай бичнэ үү..." />
+          </div>
+          <button className="btn btn-primary" style={{ width: "100%" }} onClick={saveProfile}>Хадгалах</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ==================== PROFILE PAGE (USER) ====================
+function ProfilePage({ user, userProfile, courses, db, notify, setUserProfile }) {
+  const [enrolledCourses, setEnrolledCourses] = useState([]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    getDoc(doc(db, "users", user.uid)).then(d => {
+      if (d.exists()) {
+        const ids = d.data().enrolledCourses || [];
+        setEnrolledCourses(courses.filter(c => ids.includes(c.id)));
+      }
+    });
+  }, [user, courses, db]);
+
+  return (
+    <div className="section">
+      <div className="section-title">👤 Миний профайл</div>
+      <div className="profile-section" style={{ marginBottom: 32 }}>
+        <div className="profile-avatar-wrap">
+          <div className="profile-avatar-img">{userProfile?.name?.[0] || "U"}</div>
+        </div>
+        <div className="form-group"><label>Нэр</label><input value={userProfile?.name || ""} disabled style={{ background: "#f9fafb" }} /></div>
+        <div className="form-group"><label>Имэйл</label><input value={userProfile?.email || ""} disabled style={{ background: "#f9fafb" }} /></div>
+      </div>
+      <div className="section-title" style={{ fontSize: 20 }}>📚 Бүртгүүлсэн сургалтууд</div>
+      {enrolledCourses.length === 0 ? (
+        <div className="empty-state"><div className="empty-icon">📭</div><p>Сургалт байхгүй байна</p></div>
+      ) : (
+        <div className="grid">
+          {enrolledCourses.map(c => <CourseCard key={c.id} course={c} onClick={() => {}} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ==================== CONTACT PAGE ====================
+function ContactPage() {
+  return (
+    <div className="section" style={{ maxWidth: 600 }}>
+      <div className="section-title">📞 Холбоо барих</div>
+      <div className="admin-panel">
+        <div style={{ fontSize: 16, lineHeight: 2 }}>
+          <div>📞 Утас: <a href="tel:99033062" style={{ color: "#f59e0b", fontWeight: 700 }}>9903-3062</a></div>
+          <div>✉️ Имэйл: <a href="mailto:contact@edumn.mn" style={{ color: "#f59e0b", fontWeight: 700 }}>contact@edumn.mn</a></div>
+          <div>🌐 Вэб: <a href="https://baasandorjne-coder.github.io/edumn" target="_blank" rel="noreferrer" style={{ color: "#f59e0b", fontWeight: 700 }}>edumn.mn</a></div>
+          <div>📍 Хаяг: Улаанбаатар, Монгол</div>
+        </div>
+      </div>
+    </div>
+  );
 }
