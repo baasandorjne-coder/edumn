@@ -1,0 +1,60 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users: зөвхөн өөрөө уншина/засна
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Courses: бүгд унших, зөвхөн teacher өөрийнхөө сургалт засах
+    match /courses/{courseId} {
+      allow read: if true;
+      allow create: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+      allow update, delete: if request.auth != null && resource.data.teacherId == request.auth.uid;
+
+      // Lessons subcollection
+      match /lessons/{lessonId} {
+        allow read: if true;
+        allow write: if request.auth != null && get(/databases/$(database)/documents/courses/$(courseId)).data.teacherId == request.auth.uid;
+      }
+
+      // Materials subcollection
+      match /materials/{matId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && get(/databases/$(database)/documents/courses/$(courseId)).data.teacherId == request.auth.uid;
+      }
+
+      // Quiz subcollection
+      match /quiz/{quizId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && get(/databases/$(database)/documents/courses/$(courseId)).data.teacherId == request.auth.uid;
+      }
+
+      // Reviews subcollection
+      match /reviews/{reviewId} {
+        allow read: if true;
+        allow create: if request.auth != null;
+        allow update, delete: if request.auth != null && request.auth.uid == reviewId;
+      }
+    }
+
+    // News: бүгд унших, admin бичнэ (client-side шалгана)
+    match /news/{newsId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Pending teachers: бүгд бичих, зөвхөн admin унших
+    match /pendingTeachers/{id} {
+      allow read, write: if true;
+    }
+
+    // Orders: зөвхөн өөрөө харна
+    match /orders/{orderId} {
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow create: if request.auth != null;
+    }
+  }
+}
