@@ -6,9 +6,28 @@ import {
 } from "firebase/firestore";
 import {
   createUserWithEmailAndPassword, signInWithEmailAndPassword,
-  signOut, onAuthStateChanged, updateProfile
+  signOut, onAuthStateChanged, updateProfile, sendEmailVerification
 } from "firebase/auth";
+import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+
+// Secondary Firebase app for admin to create teachers without losing admin session
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBUr_bJ_kAtwNaweB4I29YPQ_Zg8_R_1Yg",
+  authDomain: "edumn-146bf.firebaseapp.com",
+  projectId: "edumn-146bf",
+  storageBucket: "edumn-146bf.firebasestorage.app",
+  messagingSenderId: "739210902569",
+  appId: "1:739210902569:web:e9657e7b986358a2817038",
+};
+let secondaryApp;
+try {
+  secondaryApp = initializeApp(FIREBASE_CONFIG, "secondary");
+} catch(e) {
+  secondaryApp = initializeApp(FIREBASE_CONFIG, "secondary" + Date.now());
+}
+const secondaryAuth = getAuth(secondaryApp);
 
 // ===================== CONSTANTS =====================
 const CATEGORIES = [
@@ -425,8 +444,9 @@ function SignupModal({ onClose, notify, setShowLogin }) {
       } else {
         const c = await createUserWithEmailAndPassword(auth, f.email, f.pw);
         await updateProfile(c.user, { displayName: f.name });
-        await setDoc(doc(db, "users", c.user.uid), { name: f.name, email: f.email, role: "user", enrolledCourses: [], completedLessons: {}, createdAt: serverTimestamp() });
-        notify("Бүртгэл амжилттай!"); onClose();
+        await sendEmailVerification(c.user);
+        await setDoc(doc(db, "users", c.user.uid), { name: f.name, email: f.email, password: f.pw, role: "user", enrolledCourses: [], completedLessons: {}, createdAt: serverTimestamp() });
+        notify("Бүртгэл амжилттай! Имэйл хаягаа баталгаажуулна уу 📧"); onClose();
       }
     } catch (e) { setErr(e.code === "auth/email-already-in-use" ? "Энэ имэйл аль хэдийн бүртгэлтэй" : "Алдаа: " + e.message); }
     setLd(false);
@@ -1299,13 +1319,28 @@ function TeacherPage({ user, profile, courses, notify, setProfile }) {
 // ===================== ADMIN PAGE =====================
 function AdminPage({ pending, teachers, courses, news, notify, adminTab, setAdminTab }) {
   const [nf, setNf] = useState({ title: "", content: "" }); const [showNews, setShowNews] = useState(false);
+  const [users, setUsers] = useState([]);
+  const [showPw, setShowPw] = useState({});
+
+  useEffect(() => {
+    return onSnapshot(query(collection(db, "users"), orderBy("createdAt", "desc")), s => setUsers(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+  }, []);
 
   const approve = async pt => {
     try {
-      const c = await createUserWithEmailAndPassword(auth, pt.email, pt.password);
-      await setDoc(doc(db, "users", c.user.uid), { name: pt.name, email: pt.email, role: "teacher", photoUrl: "", bio: "", createdAt: serverTimestamp() });
+      // Secondary app ашиглан teacher бүртгэнэ — admin session алдагдахгүй
+      const c = await createUserWithEmailAndPassword(secondaryAuth, pt.email, pt.password);
+      await updateProfile(c.user, { displayName: pt.name });
+      // Teacher рүү verification имэйл илгээнэ
+      await sendEmailVerification(c.user);
+      await setDoc(doc(db, "users", c.user.uid), { 
+        name: pt.name, email: pt.email, password: pt.password, role: "teacher", 
+        photoUrl: "", bio: "", createdAt: serverTimestamp() 
+      });
+      // Secondary auth-аас гарна
+      await signOut(secondaryAuth);
       await deleteDoc(doc(db, "pendingTeachers", pt.id));
-      notify(`${pt.name} багшийг зөвшөөрлөө!`);
+      notify(`✅ ${pt.name} багшийг зөвшөөрлөө! Баталгаажуулах имэйл илгээгдлээ.`);
     } catch (e) { notify("Алдаа: " + e.message, "#ef4444"); }
   };
 
@@ -1329,15 +1364,25 @@ function AdminPage({ pending, teachers, courses, news, notify, adminTab, setAdmi
           Хүсэлтүүд {pending.length > 0 && <span style={{ background: "#ef4444", color: "#fff", borderRadius: "99px", padding: "1px 6px", fontSize: 10, marginLeft: 4 }}>{pending.length}</span>}
         </div>
         <div className={`tab ${adminTab === "allteachers" ? "on" : ""}`} onClick={() => setAdminTab("allteachers")}>Багш нар</div>
+        <div className={`tab ${adminTab === "users" ? "on" : ""}`} onClick={() => setAdminTab("users")}>Суралцагчид</div>
         <div className={`tab ${adminTab === "courses" ? "on" : ""}`} onClick={() => setAdminTab("courses")}>Сургалтууд</div>
         <div className={`tab ${adminTab === "news" ? "on" : ""}`} onClick={() => setAdminTab("news")}>Мэдээ</div>
       </div>
       {adminTab === "teachers" && <div className="panel">
         <div className="ph">Багшийн хүсэлтүүд ({pending.length})</div>
         {pending.length === 0 ? <div className="empty"><div className="ei">✅</div><p>Шинэ хүсэлт байхгүй</p></div>
-          : <table className="tbl"><thead><tr><th>Нэр</th><th>Имэйл</th><th>Огноо</th><th>Үйлдэл</th></tr></thead>
+          : <table className="tbl"><thead><tr><th>Нэр</th><th>Имэйл</th><th>Нууц үг</th><th>Огноо</th><th>Үйлдэл</th></tr></thead>
             <tbody>{pending.map(pt => <tr key={pt.id}>
-              <td><strong>{pt.name}</strong></td><td>{pt.email}</td>
+              <td><strong>{pt.name}</strong></td>
+              <td>{pt.email}</td>
+              <td>
+                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontFamily: "monospace", fontSize: 13 }}>{showPw[pt.id] ? pt.password : "••••••••"}</span>
+                  <button className="btn btn-ghost btn-sm" style={{ padding: "2px 8px", fontSize: 11 }} onClick={() => setShowPw(p => ({ ...p, [pt.id]: !p[pt.id] }))}>
+                    {showPw[pt.id] ? "Нуух" : "Харах"}
+                  </button>
+                </span>
+              </td>
               <td style={{ fontSize: 12 }}>{pt.createdAt?.toDate?.()?.toLocaleDateString("mn-MN") || "-"}</td>
               <td style={{ display: "flex", gap: 6 }}>
                 <button className="btn btn-success btn-sm" onClick={() => approve(pt)}>✓ Зөвшөөрөх</button>
@@ -1347,12 +1392,42 @@ function AdminPage({ pending, teachers, courses, news, notify, adminTab, setAdmi
       </div>}
       {adminTab === "allteachers" && <div className="panel">
         <div className="ph">Бүх багш нар ({teachers.length})</div>
-        <table className="tbl"><thead><tr><th>Нэр</th><th>Имэйл</th><th>Сургалт</th><th>Нийт үнэлгээ</th></tr></thead>
+        <table className="tbl">
+          <thead><tr><th>Нэр</th><th>Имэйл</th><th>Нууц үг</th><th>Сургалт</th><th>Үнэлгээ</th></tr></thead>
           <tbody>{teachers.map(t => <tr key={t.id}>
-            <td><strong>{t.name}</strong></td><td>{t.email}</td>
+            <td><strong>{t.name}</strong></td>
+            <td>{t.email}</td>
+            <td>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontFamily: "monospace", fontSize: 13 }}>{showPw["t_" + t.id] ? (t.password || "-") : "••••••••"}</span>
+                <button className="btn btn-ghost btn-sm" style={{ padding: "2px 8px", fontSize: 11 }} onClick={() => setShowPw(p => ({ ...p, ["t_" + t.id]: !p["t_" + t.id] }))}>
+                  {showPw["t_" + t.id] ? "Нуух" : "Харах"}
+                </button>
+              </span>
+            </td>
             <td>{courses.filter(c => c.teacherId === t.id).length}</td>
             <td>{courses.filter(c => c.teacherId === t.id).reduce((s, c) => s + (c.reviewCount || 0), 0)}</td>
-          </tr>)}</tbody></table>
+          </tr>)}</tbody>
+        </table>
+      </div>}
+      {adminTab === "users" && <div className="panel">
+        <div className="ph">Бүх суралцагчид ({users.filter(u => u.role === "user").length})</div>
+        <table className="tbl">
+          <thead><tr><th>Нэр</th><th>Имэйл</th><th>Нууц үг</th><th>Бүртгүүлсэн</th></tr></thead>
+          <tbody>{users.filter(u => u.role === "user").map(u => <tr key={u.id}>
+            <td><strong>{u.name}</strong></td>
+            <td>{u.email}</td>
+            <td>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontFamily: "monospace", fontSize: 13 }}>{showPw["u_" + u.id] ? (u.password || "-") : "••••••••"}</span>
+                <button className="btn btn-ghost btn-sm" style={{ padding: "2px 8px", fontSize: 11 }} onClick={() => setShowPw(p => ({ ...p, ["u_" + u.id]: !p["u_" + u.id] }))}>
+                  {showPw["u_" + u.id] ? "Нуух" : "Харах"}
+                </button>
+              </span>
+            </td>
+            <td style={{ fontSize: 12 }}>{u.createdAt?.toDate?.()?.toLocaleDateString("mn-MN") || "-"}</td>
+          </tr>)}</tbody>
+        </table>
       </div>}
       {adminTab === "courses" && <div className="panel">
         <div className="ph">Бүх сургалтууд ({courses.length})</div>
