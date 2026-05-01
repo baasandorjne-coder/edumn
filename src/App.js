@@ -708,76 +708,137 @@ function CourseDetailPage({ course, teachers, user, role, profile, setShowLogin,
         </div>
       </div>
 
-      <div className="tabs" style={{ marginTop: 14 }}>
-        <div className={`tab ${dtab === "video" ? "on" : ""}`} onClick={() => setDtab("video")}>🎬 Хичээлүүд {lessons.length > 0 && `(${lessons.length})`}</div>
-        <div className={`tab ${dtab === "mat" ? "on" : ""}`} onClick={() => setDtab("mat")}>📄 Материал {materials.length > 0 && `(${materials.length})`}</div>
-        <div className={`tab ${dtab === "quiz" ? "on" : ""}`} onClick={() => setDtab("quiz")}>📝 Тест {quiz && `(${quiz.questions?.length})`}</div>
-        <div className={`tab ${dtab === "review" ? "on" : ""}`} onClick={() => setDtab("review")}>⭐ Сэтгэгдэл {reviews.length > 0 && `(${reviews.length})`}</div>
+      {/* Zangia-style tabs */}
+      <div style={{ borderBottom: "2px solid #e5e7eb", marginTop: 16, marginBottom: 0, display: "flex", gap: 0 }}>
+        {[
+          { key: "intro", label: "Танилцуулга" },
+          { key: "video", label: `Хичээл${lessons.length > 0 ? ` (${lessons.length})` : ""}` },
+          { key: "quiz", label: "Шалгалт" },
+          { key: "review", label: `Сэтгэгдэл${reviews.length > 0 ? ` (${reviews.length})` : ""}` },
+          { key: "files", label: "Татах материал" },
+        ].map(t => (
+          <button key={t.key} onClick={() => setDtab(t.key)} style={{
+            padding: "11px 20px", border: "none", background: "none", cursor: "pointer",
+            fontWeight: dtab === t.key ? 700 : 500, fontSize: 14,
+            color: dtab === t.key ? "#1a1a2e" : "#6b7280",
+            borderBottom: dtab === t.key ? "3px solid #f59e0b" : "3px solid transparent",
+            fontFamily: "inherit", marginBottom: -2, transition: "all 0.2s"
+          }}>{t.label}</button>
+        ))}
       </div>
 
-      {dtab === "video" && (
-        <>
-          {lessons.length > 0 && (
-            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-              <div style={{ width: 260, flexShrink: 0 }}>
+      {/* ТАНИЛЦУУЛГА */}
+      {dtab === "intro" && (
+        <div style={{ display: "flex", gap: 24, marginTop: 20, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="vbox" style={{ marginBottom: 16 }}>
+              {(activeYtId || course.videoStorageUrl) ? (
+                activeYtId ? <iframe src={`https://www.youtube.com/embed/${activeYtId}`} allowFullScreen title={course.title} />
+                  : <video src={course.videoStorageUrl} controls />
+              ) : <div className="vlock"><span style={{ fontSize: 36 }}>🎬</span><span style={{ color: "#9ca3af" }}>Танилцуулга видео</span></div>}
+            </div>
+            <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 10 }}>Сургалтын тухай</h3>
+            <p style={{ color: "#374151", lineHeight: 1.8, fontSize: 14 }}>{course.description}</p>
+            {lessons.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Хичээлийн агуулга:</div>
                 {lessons.map((l, i) => (
-                  <div key={l.id} className={`lesson-item ${selLesson?.id === l.id ? "active" : ""} ${completedLessons.includes(l.id) ? "done" : ""}`} onClick={() => setSelLesson(l)}>
-                    <div className={`lesson-num ${completedLessons.includes(l.id) ? "done" : ""}`}>{completedLessons.includes(l.id) ? "✓" : i + 1}</div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>{l.title}</div>
-                      {l.duration && <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>⏱ {l.duration}</div>}
-                    </div>
+                  <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px solid #f3f4f6" }}>
+                    <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#f59e0b", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#1a1a2e", flexShrink: 0 }}>{i + 1}</span>
+                    <span style={{ flex: 1, fontSize: 14 }}>{l.title}</span>
+                    {l.duration && <span style={{ fontSize: 12, color: "#9ca3af" }}>⏱ {l.duration}</span>}
                   </div>
                 ))}
+                <button className="btn btn-primary" style={{ marginTop: 14 }} onClick={() => setDtab("video")}>Хичээлүүд үзэх »</button>
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                {selLesson && <>
-                  <div className="vbox">
-                    {canWatch ? (
-                      ytId(selLesson.videoUrl) ? <iframe src={`https://www.youtube.com/embed/${ytId(selLesson.videoUrl)}`} allowFullScreen title={selLesson.title} /> :
-                        selLesson.videoStorageUrl ? <video src={selLesson.videoStorageUrl} controls /> :
-                          <div className="vlock"><span style={{ fontSize: 36 }}>🎬</span><span style={{ color: "#9ca3af" }}>Видео удахгүй нэмэгдэнэ</span></div>
-                    ) : <div className="vlock"><span style={{ fontSize: 42 }}>🔒</span><span style={{ fontSize: 16, fontWeight: 700 }}>Бүртгүүлснийхээ дараа үзнэ үү</span><button className="btn btn-primary" onClick={enroll}>{course.isFree ? "Бүртгүүлэх" : "Худалдаж авах"}</button></div>}
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <h3 style={{ fontSize: 17, fontWeight: 700 }}>{selLesson.title}</h3>
-                    {enrolled && !completedLessons.includes(selLesson.id) && <button className="btn btn-success btn-sm" onClick={() => markLessonDone(selLesson.id)}>✓ Дүүргэсэн</button>}
-                    {completedLessons.includes(selLesson.id) && <span style={{ color: "#10b981", fontWeight: 700, fontSize: 13 }}>✅ Дүүргэсэн</span>}
-                  </div>
-                  {selLesson.description && <p style={{ color: "#6b7280", marginTop: 8, lineHeight: 1.6 }}>{selLesson.description}</p>}
-                </>}
-              </div>
-            </div>
-          )}
-          {lessons.length === 0 && (
-            <div className="vbox">
-              {canWatch ? (
-                activeYtId ? <iframe src={`https://www.youtube.com/embed/${activeYtId}`} allowFullScreen title={course.title} /> :
-                  course.videoStorageUrl ? <video src={course.videoStorageUrl} controls /> :
-                    <div className="vlock"><span style={{ fontSize: 36 }}>🎬</span><span style={{ color: "#9ca3af" }}>Видео удахгүй нэмэгдэнэ</span></div>
-              ) : <div className="vlock"><span style={{ fontSize: 42 }}>🔒</span><span style={{ fontSize: 16, fontWeight: 700 }}>Бүртгүүлснийхээ дараа үзнэ үү</span><button className="btn btn-primary" onClick={enroll}>{course.isFree ? "Бүртгүүлэх" : "Худалдаж авах"}</button></div>}
-            </div>
-          )}
-        </>
-      )}
-
-      {dtab === "mat" && (
-        <div className="panel">
-          <div className="ph">📄 Сургалтын материалууд</div>
-          {materials.length === 0 ? <div className="empty"><div className="ei">📭</div><p>Материал байхгүй</p></div>
-            : materials.map(m => (
-              <div key={m.id} className="mat-item">
-                <span style={{ fontSize: 22 }}>{m.type === "pdf" ? "📕" : m.type === "ppt" ? "📊" : m.type === "doc" ? "📘" : "📎"}</span>
-                <span style={{ flex: 1, fontWeight: 600, fontSize: 13 }}>{m.name}</span>
-                {canWatch ? <a href={m.url} target="_blank" rel="noreferrer" className="btn btn-info btn-sm">⬇️ Татах</a>
-                  : <span style={{ fontSize: 12, color: "#9ca3af" }}>🔒 Бүртгүүлнэ үү</span>}
-              </div>
-            ))}
+            )}
+          </div>
         </div>
       )}
 
+      {/* ХИЧЭЭЛ — Zangia layout */}
+      {dtab === "video" && (
+        <div style={{ display: "flex", gap: 0, marginTop: 0, flexWrap: "wrap", border: "1px solid #e5e7eb", borderTop: "none", borderRadius: "0 0 12px 12px", overflow: "hidden" }}>
+          {/* Left: video player */}
+          <div style={{ flex: 1, minWidth: 0, background: "#fff" }}>
+            <div style={{ background: "#000", aspectRatio: "16/9", position: "relative" }}>
+              {selLesson ? (
+                canWatch ? (
+                  ytId(selLesson.videoUrl) ? <iframe src={`https://www.youtube.com/embed/${ytId(selLesson.videoUrl)}`} allowFullScreen title={selLesson.title} style={{ width: "100%", height: "100%", border: "none", position: "absolute", inset: 0 }} />
+                    : selLesson.videoStorageUrl ? <video src={selLesson.videoStorageUrl} controls style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }} />
+                      : <div className="vlock" style={{ position: "absolute", inset: 0 }}><span style={{ fontSize: 36 }}>🎬</span><span style={{ color: "#9ca3af" }}>Видео удахгүй</span></div>
+                ) : <div className="vlock" style={{ position: "absolute", inset: 0 }}><span style={{ fontSize: 40 }}>🔒</span><span style={{ fontWeight: 700 }}>Бүртгүүлснийхээ дараа үзнэ үү</span><button className="btn btn-primary" onClick={enroll}>{course.isFree ? "Бүртгүүлэх" : "Худалдаж авах"}</button></div>
+              ) : (
+                <div className="vlock" style={{ position: "absolute", inset: 0 }}><span style={{ fontSize: 36 }}>👈</span><span style={{ color: "#9ca3af" }}>Хичээл сонгоно уу</span></div>
+              )}
+            </div>
+            {selLesson && (
+              <div style={{ padding: "16px 20px", borderTop: "1px solid #e5e7eb" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                  <div>
+                    <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>{selLesson.title}</h3>
+                    {selLesson.description && <p style={{ color: "#6b7280", fontSize: 14, lineHeight: 1.6 }}>{selLesson.description}</p>}
+                  </div>
+                  {enrolled && !completedLessons.includes(selLesson.id) && <button className="btn btn-success btn-sm" onClick={() => markLessonDone(selLesson.id)} style={{ flexShrink: 0 }}>✓ Дүүргэсэн</button>}
+                  {completedLessons.includes(selLesson.id) && <span style={{ color: "#10b981", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>✅ Дүүргэсэн</span>}
+                </div>
+                {/* Per-lesson files */}
+                {selLesson.files && selLesson.files.length > 0 && (
+                  <div style={{ marginTop: 14, padding: "12px 16px", background: "#f9fafb", borderRadius: 9 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 9, color: "#374151" }}>📎 Хичээлийн материал:</div>
+                    {selLesson.files.map((f, fi) => (
+                      <div key={fi} style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 0", borderBottom: fi < selLesson.files.length - 1 ? "1px solid #e5e7eb" : "none" }}>
+                        <span style={{ fontSize: 18 }}>{f.type === "pdf" ? "📕" : f.type === "ppt" ? "📊" : f.type === "doc" ? "📘" : "📎"}</span>
+                        <span style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{f.name}</span>
+                        {canWatch ? <a href={f.url} target="_blank" rel="noreferrer" className="btn btn-info btn-sm">⬇️ Татах</a>
+                          : <span style={{ fontSize: 11, color: "#9ca3af" }}>🔒</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Right: lesson list like Zangia */}
+          <div style={{ width: 300, flexShrink: 0, borderLeft: "1px solid #e5e7eb", background: "#fafafa", maxHeight: 520, overflowY: "auto" }}>
+            {/* Intro item */}
+            <div onClick={() => { setSelLesson(null); setDtab("intro"); }} style={{ padding: "13px 16px", borderBottom: "1px solid #e5e7eb", cursor: "pointer", background: "#f0fdf4", display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 16 }}>🎬</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: "#065f46" }}>Танилцуулга</div>
+              </div>
+              <span style={{ fontSize: 18, color: "#10b981" }}>▶</span>
+            </div>
+            {lessons.length === 0 && <div className="empty" style={{ padding: 24 }}><div className="ei" style={{ fontSize: 32 }}>📭</div><p style={{ fontSize: 13 }}>Хичээл байхгүй</p></div>}
+            {lessons.map((l, i) => (
+              <div key={l.id} onClick={() => setSelLesson(l)} style={{
+                padding: "13px 16px", borderBottom: "1px solid #e5e7eb", cursor: "pointer",
+                background: selLesson?.id === l.id ? "#fffbeb" : completedLessons.includes(l.id) ? "#f0fdf4" : "#fff",
+                transition: "background 0.15s"
+              }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                  <div style={{ width: 24, height: 24, borderRadius: "50%", background: completedLessons.includes(l.id) ? "#10b981" : selLesson?.id === l.id ? "#f59e0b" : "#1a1a2e", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>
+                    {completedLessons.includes(l.id) ? "✓" : i + 1}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: selLesson?.id === l.id ? 700 : 500, fontSize: 13, lineHeight: 1.4, color: selLesson?.id === l.id ? "#92400e" : "#1a1a2e" }}>{l.title}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                      {l.duration && <span style={{ fontSize: 11, color: "#9ca3af" }}>Үргэлжлэх хугацаа: {l.duration}</span>}
+                      {l.files?.length > 0 && <span style={{ fontSize: 11, color: "#3b82f6" }}>📎 {l.files.length}</span>}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 16, color: selLesson?.id === l.id ? "#f59e0b" : "#9ca3af" }}>▶</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ШАЛГАЛТ */}
       {dtab === "quiz" && (
-        <div className="panel">
+        <div className="panel" style={{ marginTop: 16 }}>
           <div className="ph">📝 Тест шалгалт</div>
           {!quiz ? <div className="empty"><div className="ei">📝</div><p>Тест байхгүй</p></div>
             : !canWatch ? <div className="al al-warn">🔒 Тест үзэхийн тулд бүртгүүлнэ үү</div>
@@ -797,13 +858,14 @@ function CourseDetailPage({ course, teachers, user, role, profile, setShowLogin,
                   </div>
                 ))}
                 {!submitted && <button className="btn btn-primary" onClick={submitQuiz} disabled={Object.keys(answers).length < (quiz.questions?.length || 0)}>Илгээх</button>}
-                {submitted && <div className="al al-ok">✅ Тест дүүргэсэн! Хариултуудыг дээр харна уу.</div>}
+                {submitted && <div className="al al-ok">✅ Тест дүүргэсэн!</div>}
               </>}
         </div>
       )}
 
+      {/* СЭТГЭГДЭЛ */}
       {dtab === "review" && (
-        <div className="panel">
+        <div className="panel" style={{ marginTop: 16 }}>
           <div className="ph">⭐ Сэтгэгдэл & Үнэлгээ</div>
           {enrolled && (
             <div style={{ background: "#f9fafb", borderRadius: 11, padding: 16, marginBottom: 18 }}>
@@ -829,6 +891,47 @@ function CourseDetailPage({ course, teachers, user, role, profile, setShowLogin,
                 {r.comment && <p style={{ fontSize: 13, color: "#374151", lineHeight: 1.6 }}>{r.comment}</p>}
               </div>
             ))}
+        </div>
+      )}
+
+      {/* ТАТАХ МАТЕРИАЛ — хичээл бүрийн файлууд + ерөнхий материал */}
+      {dtab === "files" && (
+        <div style={{ marginTop: 16 }}>
+          {/* Per-lesson files */}
+          {lessons.filter(l => l.files?.length > 0).length > 0 && (
+            <div className="panel" style={{ marginBottom: 16 }}>
+              <div className="ph">📎 Хичээл тус бүрийн материал</div>
+              {lessons.filter(l => l.files?.length > 0).map((l, i) => (
+                <div key={l.id} style={{ marginBottom: 16 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8, color: "#1a1a2e", display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#f59e0b", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#1a1a2e" }}>{i + 1}</span>
+                    {l.title}
+                  </div>
+                  {l.files.map((f, fi) => (
+                    <div key={fi} className="mat-item" style={{ marginLeft: 30 }}>
+                      <span style={{ fontSize: 20 }}>{f.type === "pdf" ? "📕" : f.type === "ppt" ? "📊" : f.type === "doc" ? "📘" : "📎"}</span>
+                      <span style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{f.name}</span>
+                      {canWatch ? <a href={f.url} target="_blank" rel="noreferrer" className="btn btn-info btn-sm">⬇️ Татах</a>
+                        : <span style={{ fontSize: 11, color: "#9ca3af" }}>🔒 Бүртгүүлнэ үү</span>}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+          {/* General materials */}
+          <div className="panel">
+            <div className="ph">📄 Ерөнхий материал</div>
+            {materials.length === 0 ? <div className="empty"><div className="ei">📭</div><p>Материал байхгүй</p></div>
+              : materials.map(m => (
+                <div key={m.id} className="mat-item">
+                  <span style={{ fontSize: 20 }}>{m.type === "pdf" ? "📕" : m.type === "ppt" ? "📊" : m.type === "doc" ? "📘" : "📎"}</span>
+                  <span style={{ flex: 1, fontWeight: 600, fontSize: 13 }}>{m.name}</span>
+                  {canWatch ? <a href={m.url} target="_blank" rel="noreferrer" className="btn btn-info btn-sm">⬇️ Татах</a>
+                    : <span style={{ fontSize: 12, color: "#9ca3af" }}>🔒 Бүртгүүлнэ үү</span>}
+                </div>
+              ))}
+          </div>
         </div>
       )}
 
@@ -986,6 +1089,8 @@ function TeacherPage({ user, profile, courses, notify, setProfile }) {
   const [showAddLesson, setShowAddLesson] = useState(false);
   const [lf, setLf] = useState({ title: "", desc: "", duration: "", vtype: "youtube", vurl: "" });
   const [lvFile, setLvFile] = useState(null); const [lvProg, setLvProg] = useState(0);
+  const [lessonFiles, setLessonFiles] = useState([]); // per-lesson files to upload
+  const [lessonFileProg, setLessonFileProg] = useState({});
   // Materials
   const [matCourse, setMatCourse] = useState(null); const [materials, setMaterials] = useState([]);
   const [matFile, setMatFile] = useState(null); const [matName, setMatName] = useState(""); const [matProg, setMatProg] = useState(0);
@@ -1054,13 +1159,23 @@ function TeacherPage({ user, profile, courses, notify, setProfile }) {
     let videoStorageUrl = "";
     try {
       if (lf.vtype === "file" && lvFile) videoStorageUrl = await uploadFile(lvFile, `lessons/${lessonCourse}/${Date.now()}_${lvFile.name}`, setLvProg);
+      // Upload per-lesson files
+      const uploadedFiles = [];
+      for (const lfile of lessonFiles) {
+        const ext = lfile.name.split(".").pop().toLowerCase();
+        const type = ext === "pdf" ? "pdf" : ["ppt","pptx"].includes(ext) ? "ppt" : ["doc","docx"].includes(ext) ? "doc" : "file";
+        const url = await uploadFile(lfile, `lesson-files/${lessonCourse}/${Date.now()}_${lfile.name}`, p => setLessonFileProg(prev => ({ ...prev, [lfile.name]: p })));
+        uploadedFiles.push({ name: lfile.name, url, type });
+      }
       await setDoc(doc(collection(db, "courses", lessonCourse, "lessons")), {
         title: lf.title, description: lf.desc, duration: lf.duration,
         videoUrl: lf.vtype === "youtube" ? lf.vurl : "", videoStorageUrl,
+        files: uploadedFiles,
         order: lessons.length + 1, createdAt: serverTimestamp()
       });
       setLf({ title: "", desc: "", duration: "", vtype: "youtube", vurl: "" });
-      setLvFile(null); setLvProg(0); setShowAddLesson(false); notify("Хичээл нэмэгдлээ!");
+      setLvFile(null); setLvProg(0); setLessonFiles([]); setLessonFileProg({});
+      setShowAddLesson(false); notify("Хичээл нэмэгдлээ!");
     } catch (e) { notify("Алдаа: " + e.message, "#ef4444"); }
     setUploading(false);
   };
@@ -1194,6 +1309,17 @@ function TeacherPage({ user, profile, courses, notify, setProfile }) {
                     </label>}
                   {lvProg > 0 && lvProg < 100 && <div style={{ marginTop: 6 }}><div style={{ fontSize: 12, color: "#6b7280" }}>Байршуулж байна... {Math.round(lvProg)}%</div><div className="pw"><div className="pf" style={{ width: `${lvProg}%` }} /></div></div>}
                 </div>
+                <div className="fg">
+                  <label>📎 Хичээлийн материал (PDF, DOC, PPT)</label>
+                  <label className="ua">
+                    <input type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.zip" multiple onChange={e => setLessonFiles(Array.from(e.target.files))} />
+                    {lessonFiles.length > 0 ? <div>{lessonFiles.map(f => <div key={f.name} style={{ fontSize: 13, marginBottom: 3 }}>✅ {f.name}</div>)}</div>
+                      : <span>📎 Файл сонгох (олон файл нэгэн зэрэг сонгож болно)</span>}
+                  </label>
+                  {Object.entries(lessonFileProg).map(([name, prog]) => prog > 0 && prog < 100 && (
+                    <div key={name} style={{ marginTop: 4 }}><div style={{ fontSize: 11, color: "#6b7280" }}>{name}: {Math.round(prog)}%</div><div className="pw"><div className="pf" style={{ width: `${prog}%` }} /></div></div>
+                  ))}
+                </div>
                 <div style={{ display: "flex", gap: 9 }}>
                   <button className="btn btn-primary" onClick={addLesson} disabled={uploading}>{uploading ? "Байршуулж байна..." : "Нэмэх"}</button>
                   <button className="btn btn-ghost" onClick={() => setShowAddLesson(false)}>Болих</button>
@@ -1201,11 +1327,12 @@ function TeacherPage({ user, profile, courses, notify, setProfile }) {
               </div>
             )}
             {lessons.length === 0 ? <div className="empty"><div className="ei">📹</div><p>Хичээл байхгүй</p></div>
-              : <table className="tbl"><thead><tr><th>#</th><th>Нэр</th><th>Хугацаа</th><th>Видео</th><th>Үйлдэл</th></tr></thead>
+              : <table className="tbl"><thead><tr><th>#</th><th>Нэр</th><th>Хугацаа</th><th>Видео</th><th>Файл</th><th>Үйлдэл</th></tr></thead>
                 <tbody>{lessons.map((l, i) => <tr key={l.id}>
                   <td>{i + 1}</td><td><strong>{l.title}</strong></td>
                   <td>{l.duration || "-"}</td>
                   <td>{(l.videoUrl || l.videoStorageUrl) ? "✅" : "❌"}</td>
+                  <td>{l.files?.length > 0 ? <span style={{ color: "#3b82f6" }}>📎 {l.files.length}</span> : "-"}</td>
                   <td><button className="btn btn-danger btn-sm" onClick={() => deleteDoc(doc(db, "courses", lessonCourse, "lessons", l.id))}>Устгах</button></td>
                 </tr>)}</tbody>
               </table>}
