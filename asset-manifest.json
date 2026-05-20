@@ -1,10 +1,10 @@
 {
   "files": {
-    "main.js": "/edumn/static/js/main.f835f791.js",
+    "main.js": "/edumn/static/js/main.ac5daa3b.js",
     "index.html": "/edumn/index.html",
-    "main.f835f791.js.map": "/edumn/static/js/main.f835f791.js.map"
+    "main.ac5daa3b.js.map": "/edumn/static/js/main.ac5daa3b.js.map"
   },
   "entrypoints": [
-    "static/js/main.f835f791.js"
+    "static/js/main.ac5daa3b.js"
   ]
 }
