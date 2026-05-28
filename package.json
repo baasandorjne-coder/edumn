@@ -2,7 +2,7 @@
   "name": "edumn-platform",
   "version": "3.0.0",
   "private": true,
-  "homepage": "https://baasandorjne-coder.github.io/edumn",
+  "homepage": "https://edu-mn.com",
   "description": "EduMN - Монгол онлайн сургалтын платформ (Firebase)",
   "dependencies": {
     "firebase": "^10.7.0",
@@ -12,7 +12,7 @@
   },
   "scripts": {
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d build",
+    "deploy": "gh-pages -d build -t true",
     "start": "react-scripts start",
     "build": "react-scripts build"
   },
